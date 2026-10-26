@@ -3,3 +3,4 @@ dist
 public/samples
 .DS_Store
 scripts/out
+.vite
