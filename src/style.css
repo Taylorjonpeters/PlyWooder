@@ -167,5 +167,5 @@ details.steps li { white-space: pre-wrap; }
   #sheetsPane { padding: 16px; }
   #viewPane { min-height: 70vh; }
 }
-.tabs #repack { background: var(--accent); color: var(--accent-ink); font-weight: 600; margin-left: 10px; padding: 6px 16px; }
-.tabs #repack:hover { filter: brightness(1.08); }
+.repack { width: 100%; padding: 10px 12px; animation: pop 0.18s ease-out; }
+@keyframes pop { from { transform: translateY(-4px); opacity: 0; } }
