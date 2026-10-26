@@ -1,0 +1,25 @@
+{
+  "name": "plywooder",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "tsx scripts/pipeline-test.ts"
+  },
+  "dependencies": {
+    "clipper-lib": "^6.4.2",
+    "occt-import-js": "^0.0.23",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/clipper-lib": "^6.4.0",
+    "@types/node": "^20.19.43",
+    "@types/three": "^0.170.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^6.3.5"
+  }
+}

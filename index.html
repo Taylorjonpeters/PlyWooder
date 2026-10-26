@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlyWooder</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="side">
+        <header class="brand">
+          <h1>PlyWooder</h1>
+          <p>STEP in, cut sheets out.</p>
+        </header>
+
+        <section>
+          <label class="drop" id="drop">
+            <input type="file" id="file" accept=".step,.stp,.STEP,.STP" hidden />
+            <strong id="fileName">Open a STEP file</strong>
+            <span id="fileHint">or drop it anywhere</span>
+          </label>
+        </section>
+
+        <section>
+          <h2>Sheet</h2>
+          <select id="sheetPreset">
+            <option value="2438.4x1219.2">4 × 8 ft (2438 × 1219 mm)</option>
+            <option value="2500x1250">2500 × 1250 mm</option>
+            <option value="1525x1525">5 × 5 ft Baltic birch (1525 mm)</option>
+            <option value="1219.2x1219.2">4 × 4 ft (1219 × 1219 mm)</option>
+            <option value="1219.2x609.6">2 × 4 ft (1219 × 610 mm)</option>
+            <option value="609.6x609.6">2 × 2 ft (610 × 610 mm)</option>
+            <option value="custom">Custom…</option>
+          </select>
+          <div class="row2">
+            <label>Length <input type="number" id="sheetW" step="any" min="1" /></label>
+            <label>Width <input type="number" id="sheetH" step="any" min="1" /></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Packing</h2>
+          <div class="seg" id="mode">
+            <button data-v="optimal">Most efficient</button>
+            <button data-v="easy">Easiest to cut</button>
+          </div>
+          <p class="hint" id="modeHint"></p>
+          <label>Rotation
+            <select id="rotation">
+              <option value="free90">Any 90° turn</option>
+              <option value="grain">Keep grain direction</option>
+              <option value="deg45">45° steps</option>
+              <option value="deg15">15° steps</option>
+            </select>
+          </label>
+          <label id="effortRow">Search effort
+            <select id="effort">
+              <option value="quick">Quick</option>
+              <option value="normal">Normal</option>
+              <option value="thorough">Thorough</option>
+            </select>
+          </label>
+        </section>
+
+        <section>
+          <h2>Margins</h2>
+          <label>Sheet edge margin <input type="number" id="edgeMargin" step="any" min="0" /></label>
+          <label>Bit / blade width <input type="number" id="kerf" step="any" min="0" /></label>
+          <label class="check"><input type="checkbox" id="shareCuts" /> Share cuts between neighbouring parts</label>
+          <label id="errorGapRow">Extra gap for human error <input type="number" id="errorGap" step="any" min="0" /></label>
+          <p class="hint" id="gapHint"></p>
+        </section>
+
+        <section>
+          <h2>Display</h2>
+          <div class="seg" id="shape">
+            <button data-v="true">Actual cuts</button>
+            <button data-v="hull">Convex hull</button>
+          </div>
+          <label class="check"><input type="checkbox" id="showCuts" /> Show cut paths</label>
+          <div class="seg" id="units">
+            <button data-v="mm">mm</button>
+            <button data-v="in">inches</button>
+          </div>
+        </section>
+
+        <section id="partsSection" hidden>
+          <h2>Parts <span class="count" id="partsCount"></span></h2>
+          <div id="parts" class="parts"></div>
+        </section>
+
+        <section id="exportSection" hidden>
+          <h2>Export for CNC</h2>
+          <div class="seg" id="dxfUnits">
+            <button data-v="mm">DXF in mm</button>
+            <button data-v="in">DXF in inches</button>
+          </div>
+          <button class="primary" id="exportAll">Download all sheets (.dxf)</button>
+          <p class="hint">DXF opens in VCarve, Fusion, Carbide Create, Easel and other CAM tools. DWG is Autodesk-only; any CAD program can save this DXF as DWG. Layers: CUT_OUTSIDE, CUT_INSIDE, POCKET_*, SAW_CUTS, LABELS, plus CUT_PATHS — the merged tool-centre paths in cutting order. Run CUT_PATHS as an on-the-line profile with the same bit to cut shared edges once.</p>
+        </section>
+      </aside>
+
+      <main class="main">
+        <nav class="tabs">
+          <button data-tab="sheets" class="on">Sheets</button>
+          <button data-tab="3d">3D / Animate</button>
+          <span class="status" id="status"></span>
+          <button class="primary" id="repack" hidden>Repack</button>
+        </nav>
+        <div class="pane" id="sheetsPane">
+          <div class="empty" id="empty">
+            <h2>Open a STEP file to get started</h2>
+            <p>Each solid becomes a part. Flat parts are laid out on sheets, grouped by thickness.</p>
+          </div>
+          <div id="sheets"></div>
+        </div>
+        <div class="pane" id="viewPane" hidden>
+          <div id="view3d"></div>
+          <div class="player">
+            <button id="play">▶</button>
+            <input type="range" id="scrub" min="0" max="1000" value="0" />
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="dropOverlay" id="dropOverlay">Drop a STEP file</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
