@@ -1,5 +1,7 @@
 # PlyWooder
 
+**Try it: https://taylorjonpeters.github.io/PlyWooder/**
+
 Open a STEP file and get plywood cut sheets. Each solid in the file becomes a part. PlyWooder lays the flat parts out on sheets, shows an animation of the model coming apart onto the sheets, and exports DXF files for a CNC.
 
 ## Run it
@@ -34,3 +36,10 @@ npm test -- path/to/model.step
 ```
 
 Runs the STEP → parts → nesting → DXF pipeline in Node. It checks that no two parts come closer than the requested gap and that every part stays on the sheet.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+PlyWooder uses [three.js](https://threejs.org) (MIT), [Clipper](https://sourceforge.net/projects/jsclipper/) (Boost Software License), and [occt-import-js](https://github.com/kovacsv/occt-import-js). occt-import-js is a WebAssembly build of [Open CASCADE](https://dev.opencascade.org) (LGPL-2.1) and ships as its own separate `.wasm` file. Files open in your browser and are never uploaded.
+
