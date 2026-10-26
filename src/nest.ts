@@ -332,7 +332,7 @@ function slideDistance(mov: Poly[], obs: Poly[], dx: number, dy: number): number
 }
 
 // ---------------------------------------------------------------------------
-// "Easiest to cut": 3-stage guillotine layout of bounding rectangles.
+// "Manual cut": 3-stage guillotine layout of bounding rectangles.
 //   1. crosscut the sheet into strips across its length
 //   2. rip each strip into rows
 //   3. crosscut rows into parts

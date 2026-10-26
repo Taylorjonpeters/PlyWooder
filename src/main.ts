@@ -2,7 +2,8 @@ import occtimportjs from 'occt-import-js';
 import occtWasmUrl from 'occt-import-js/dist/occt-import-js.wasm?url';
 import { partsFromStep, type Part, type Occt } from './parts';
 import { groupItems, placedShapes, type MaterialGroup, type PartChoice, type PlacedShape } from './layout';
-import { gapOf, type NestResult, type NestSettings, type CutLine } from './nest';
+import { gapOf, type NestResult, type NestSettings } from './nest';
+import { throughCuts, type ThroughCut, type ThroughPlan } from './through';
 import type { NestRequest } from './nest.worker';
 import { toDxf, toSvg, type DxfSheet } from './dxf';
 import { View3D, type Sheet3D, type SheetPlacement } from './view3d';
@@ -10,13 +11,13 @@ import { fmtLen, toUnits, fromUnits, type Units } from './units';
 import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
 
-type Settings = NestSettings & { units: Units; dxfUnits: Units; preset: string; showCuts: boolean };
+type Settings = NestSettings & { units: Units; dxfUnits: Units; preset: string; showCuts: boolean; showThrough: boolean };
 
 const DEFAULTS: Settings = {
   sheetW: 2438.4, sheetH: 1219.2, preset: '2438.4x1219.2',
   edgeMargin: 12.7, kerf: 6.35, errorGap: 3.2, shareCuts: true,
-  mode: 'optimal', shape: 'true', rotation: 'free90', effort: 'normal',
-  units: 'mm', dxfUnits: 'mm', showCuts: true,
+  mode: 'easy', shape: 'true', rotation: 'free90', effort: 'normal',
+  units: 'mm', dxfUnits: 'mm', showCuts: false, showThrough: true,
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -83,7 +84,7 @@ let jobId = 0;
 
 /** The settings that affect packing, for one mode. */
 function nestSettings(mode = state.settings.mode): NestSettings {
-  const { units: _u, dxfUnits: _d, preset: _p, showCuts: _c, ...rest } = state.settings;
+  const { units: _u, dxfUnits: _d, preset: _p, showCuts: _c, showThrough: _t, ...rest } = state.settings;
   return { ...rest, mode };
 }
 
@@ -186,14 +187,15 @@ function syncControls() {
   }
   $<HTMLInputElement>('shareCuts').checked = s.shareCuts;
   $<HTMLInputElement>('showCuts').checked = s.showCuts;
+  $<HTMLInputElement>('showThrough').checked = s.showThrough;
   $<HTMLInputElement>('errorGap').disabled = s.shareCuts;
   $('errorGapRow').style.opacity = s.shareCuts ? '0.45' : '';
   $('gapHint').innerHTML = s.shareCuts
     ? `Neighbouring parts sit exactly one bit apart (<b>${fmtLen(gapOf(s), s.units)}</b>), so one pass cuts both edges. Any error is shared, so there's no extra gap.`
     : `Parts end up at least <b>${fmtLen(gapOf(s), s.units)}</b> apart, and each is cut on its own.`;
   $('modeHint').textContent = s.mode === 'optimal'
-    ? 'Nests the true shapes as tightly as it can, including inside holes. Best for a CNC.'
-    : 'Straight, edge-to-edge cuts only: crosscut strips, rip rows, crosscut parts. Best for a table or track saw.';
+    ? 'Nests the true shapes as tightly as it can, including inside holes. Uses the least plywood, cut on a CNC.'
+    : 'Lays parts out in strips and rows, so every part comes free with straight, edge-to-edge cuts on a table saw or track saw.';
 }
 
 function bindControls() {
@@ -236,6 +238,7 @@ function bindControls() {
   seg('units', () => { renderParts(); render(); saveSettings(); });
   seg('dxfUnits', saveSettings);
   $<HTMLInputElement>('shareCuts').addEventListener('change', (e) => { s.shareCuts = (e.target as HTMLInputElement).checked; syncControls(); settingsChanged(); });
+  $<HTMLInputElement>('showThrough').addEventListener('change', (e) => { s.showThrough = (e.target as HTMLInputElement).checked; saveSettings(); render(); });
   $<HTMLInputElement>('showCuts').addEventListener('change', (e) => { s.showCuts = (e.target as HTMLInputElement).checked; saveSettings(); render(); });
 
   $<HTMLInputElement>('file').addEventListener('change', (e) => {
@@ -340,6 +343,7 @@ function render() {
     }
     r.sheets.forEach((sh, si) => {
       const shapes = placedShapes(state.parts, sh.placements, s.shape);
+      const plan = throughPlan(shapes);
       const card = document.createElement('div');
       card.className = 'sheetCard';
       card.innerHTML = `
@@ -348,9 +352,10 @@ function render() {
           <span class="meta">${sh.placements.length} parts · ${((sh.usedArea / (s.sheetW * s.sheetH)) * 100).toFixed(0)}% used · ${fmtLen(s.sheetW, s.units, false)} × ${fmtLen(s.sheetH, s.units)}</span>
           <span class="actions"><button class="ghost" data-x="dxf">DXF</button><button class="ghost" data-x="svg">SVG</button></span>
         </div>
-        ${cutStats(sh.network)}
-        ${sheetSvg(shapes, s.mode === 'easy' && !s.showCuts ? sh.cuts : [], s.showCuts ? sh.network : undefined)}
-        ${s.mode === 'easy' && sh.steps.length ? `<details class="steps"><summary>Cut order</summary><ol>${sh.steps.map((t) => `<li>${esc(stepText(t))}</li>`).join('')}</ol></details>` : ''}`;
+        ${throughStats(plan, shapes)}
+        ${s.showCuts ? cutStats(sh.network) : ''}
+        ${sheetSvg(shapes, s.showThrough ? plan.cuts : [], s.showCuts ? sh.network : undefined)}
+        ${plan.cuts.length ? `<details class="steps"><summary>Through-cut order</summary><ol>${plan.cuts.map((c) => `<li>${esc(cutText(c))}</li>`).join('')}</ol></details>` : ''}`;
       card.querySelector('[data-x="dxf"]')!.addEventListener('click', () =>
         download(`${baseName()}_${g.thickness}mm_sheet${si + 1}.dxf`, toDxf([dxfSheet(gi, si)], s.dxfUnits), 'application/dxf'));
       card.querySelector('[data-x="svg"]')!.addEventListener('click', () =>
@@ -367,9 +372,27 @@ function render() {
   update3d();
 }
 
-/** Steps are written in mm by the nester; re-express lengths in display units. */
-function stepText(t: string) {
-  return state.settings.units === 'mm' ? t.replace(/(\d+(?:\.\d+)?)(?= wide| deep| from)/g, '$1 mm') : t.replace(/(\d+(?:\.\d+)?)(?= wide| deep| from)/g, (m) => fmtLen(Number(m), 'in'));
+function throughPlan(shapes: PlacedShape[]): ThroughPlan {
+  const s = view();
+  return throughCuts(shapes.map((p) => ({ key: p.key, regions: p.regions })), s.sheetW, s.sheetH, s.kerf);
+}
+
+function throughStats(plan: ThroughPlan, shapes: PlacedShape[]): string {
+  const total = shapes.length;
+  const lockedNames = [...new Set(plan.locked.map((k) => shapes.find((p) => p.key === k)!.part.name))];
+  return `<div class="cutStats">
+    <span><b>${plan.cuts.length}</b> through cut${plan.cuts.length === 1 ? '' : 's'}</span>
+    <span><b>${plan.freed}</b> of ${total} parts come free with straight cuts</span>
+    ${plan.locked.length ? `<span>${plan.locked.length} need a CNC or jigsaw: ${lockedNames.map(esc).join(', ')}</span>` : ''}
+  </div>`;
+}
+
+/** One line of the through-cut list; the sheet's long side runs left to right. */
+function cutText(c: ThroughCut): string {
+  const { units } = state.settings;
+  const kind = c.vertical ? 'Crosscut' : 'Rip';
+  const from = c.vertical ? 'left' : 'bottom';
+  return `${kind} ${fmtLen(c.offset, units)} in from the ${from} edge of the piece (${fmtLen(c.length, units)} long).`;
 }
 
 /** Metres or feet of cutting. */
@@ -386,7 +409,7 @@ function cutStats(net?: CutNetwork): string {
   </div>`;
 }
 
-function sheetSvg(shapes: PlacedShape[], cuts: CutLine[], net?: CutNetwork): string {
+function sheetSvg(shapes: PlacedShape[], cuts: ThroughCut[], net?: CutNetwork): string {
   const s = view();
   const W = s.sheetW, H = s.sheetH;
   const y = (v: number) => (H - v).toFixed(1);
@@ -415,8 +438,11 @@ function sheetSvg(shapes: PlacedShape[], cuts: CutLine[], net?: CutNetwork): str
     for (const k of net.strokes) if (k.plunge) out.push(`<circle class="plunge" cx="${k.pts[0].x.toFixed(1)}" cy="${y(k.pts[0].y)}" r="${(W / 220).toFixed(1)}"><title>Plunge</title></circle>`);
   }
   for (const c of cuts) {
-    out.push(`<line class="guide s${c.stage}" x1="${c.x1.toFixed(1)}" y1="${y(c.y1)}" x2="${c.x2.toFixed(1)}" y2="${y(c.y2)}"/>`);
-    if (c.stage === 1) out.push(`<text class="guideLbl" x="${c.x1.toFixed(1)}" y="-8" font-size="${Math.max(18, W / 60).toFixed(0)}" text-anchor="middle">${c.label}</text>`);
+    out.push(`<line class="guide d${Math.min(c.depth, 2)}" x1="${c.x1.toFixed(1)}" y1="${y(c.y1)}" x2="${c.x2.toFixed(1)}" y2="${y(c.y2)}"/>`);
+    // Numbered badge at the start of each cut: top end of a crosscut, left end of a rip.
+    const r = Math.max(11, W / 85);
+    const bx = c.vertical ? c.x1 : c.x1 + r * 1.4, by = c.vertical ? c.y2 - r * 1.4 : c.y1;
+    out.push(`<circle class="badge" cx="${bx.toFixed(1)}" cy="${y(by)}" r="${r.toFixed(1)}"/><text class="badgeTxt" x="${bx.toFixed(1)}" y="${y(by)}" font-size="${(r * 1.1).toFixed(1)}" text-anchor="middle" dominant-baseline="central">${c.label}</text>`);
   }
   for (const sh of shapes) {
     const bb = bbox(sh.regions.flatMap((r) => r.outer));
@@ -444,11 +470,12 @@ function dxfSheet(gi: number, si: number): DxfSheet {
   const s = view();
   const g = shownGroups()[gi];
   const sh = g.result!.sheets[si];
+  const shapes = placedShapes(state.parts, sh.placements, s.shape);
   return {
     w: s.sheetW,
     h: s.sheetH,
-    shapes: placedShapes(state.parts, sh.placements, s.shape),
-    cuts: s.mode === 'easy' ? sh.cuts : [],
+    shapes,
+    cuts: throughPlan(shapes).cuts,
     strokes: sh.network?.strokes ?? [],
     title: `${g.thickness} mm - sheet ${si + 1}`,
   };

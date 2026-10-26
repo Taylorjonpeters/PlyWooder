@@ -43,8 +43,8 @@
         <section>
           <h2>Packing</h2>
           <div class="seg" id="mode">
-            <button data-v="optimal">Most efficient</button>
-            <button data-v="easy">Easiest to cut</button>
+            <button data-v="easy">Manual cut</button>
+            <button data-v="optimal">CNC cut</button>
           </div>
           <p class="hint" id="modeHint"></p>
           <label>Rotation
@@ -79,7 +79,8 @@
             <button data-v="true">Actual cuts</button>
             <button data-v="hull">Convex hull</button>
           </div>
-          <label class="check"><input type="checkbox" id="showCuts" /> Show cut paths</label>
+          <label class="check"><input type="checkbox" id="showThrough" /> Show through cuts</label>
+          <label class="check"><input type="checkbox" id="showCuts" /> Show CNC cut paths</label>
           <div class="seg" id="units">
             <button data-v="mm">mm</button>
             <button data-v="in">inches</button>

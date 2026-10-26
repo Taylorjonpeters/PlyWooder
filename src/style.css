@@ -127,9 +127,11 @@ svg .piece:hover, svg .piece.hot { fill: color-mix(in srgb, var(--wood) 70%, var
 svg .pocket { fill: color-mix(in srgb, var(--pocket) 25%, transparent); stroke: var(--pocket); stroke-dasharray: 4 3; stroke-width: 1px; }
 svg .lbl { fill: var(--ink); pointer-events: none; font-weight: 600; }
 svg .lbl tspan.d { font-weight: 400; fill: var(--muted); }
-svg .guide { stroke: var(--guide); stroke-dasharray: 6 4; stroke-width: 1.5px; }
-svg .guide.s1 { stroke-width: 2.5px; stroke-dasharray: 10 5; }
-svg .guideLbl { fill: var(--guide); font-weight: 700; }
+svg .guide { stroke: var(--guide); stroke-dasharray: 5 4; stroke-width: 1.25px; }
+svg .guide.d0 { stroke-width: 3px; stroke-dasharray: 12 5; }
+svg .guide.d1 { stroke-width: 2px; stroke-dasharray: 8 5; }
+svg .badge { fill: var(--guide); }
+svg .badgeTxt { fill: var(--panel); font-weight: 700; pointer-events: none; }
 svg.cutsOn .piece { stroke: none; }
 svg .cutSeg { stroke: var(--cut); stroke-width: 1.5px; fill: none; stroke-linecap: round; }
 svg .cutSeg.shared { stroke: var(--shared); stroke-width: 3.5px; }

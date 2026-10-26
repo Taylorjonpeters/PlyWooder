@@ -1,9 +1,9 @@
 import { type Poly, asCircle } from './geom';
 import type { PlacedShape } from './layout';
-import type { CutLine } from './nest';
 import type { Stroke } from './cutpaths';
 
-export type DxfSheet = { w: number; h: number; shapes: PlacedShape[]; cuts: CutLine[]; strokes: Stroke[]; title: string };
+export type DxfSheet = { w: number; h: number; shapes: PlacedShape[]; cuts: SawLine[]; strokes: Stroke[]; title: string };
+type SawLine = { x1: number; y1: number; x2: number; y2: number };
 
 /**
  * ASCII DXF (R12) — the format every CNC CAM package imports (VCarve, Fusion, Carbide Create,
@@ -13,7 +13,8 @@ export type DxfSheet = { w: number; h: number; shapes: PlacedShape[]; cuts: CutL
  *   POCKET_<d>   partial-depth pockets, d = depth
  *   CUT_PATHS    merged tool-centre paths in cutting order (shared edges appear once);
  *                profile these on the line with the same bit
- *   SHEET, LABELS, SAW_CUTS (reference only)
+ *   SAW_CUTS     through cuts (edge to edge, in order) for breaking the sheet down by hand
+ *   SHEET, LABELS (reference only)
  */
 export function toDxf(sheets: DxfSheet[], units: 'mm' | 'in'): string {
   const k = units === 'in' ? 1 / 25.4 : 1;
