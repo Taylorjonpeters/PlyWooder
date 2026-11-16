@@ -5,7 +5,8 @@ import { partsFromDxf, type DxfUnits } from './dxfImport';
 import { groupItems, placedShapes, type MaterialGroup, type PartChoice, type PlacedShape } from './layout';
 import { gapOf, type NestResult, type NestSettings } from './nest';
 import { throughCuts, type ThroughCut, type ThroughPlan } from './through';
-import type { NestRequest } from './nest.worker';
+import type { NestRequest, SuggestJob } from './nest.worker';
+import type { SuggestResult } from './suggest';
 import { toDxf, toSvg, type DxfSheet } from './dxf';
 import { CAM_DEFAULTS, DEFAULT_TOOLS, STUDIO_TABLES, currentTable, gordixFit, type CamSettings } from './cam';
 import { CamWorkspace, type CamSheetRef } from './camView';
@@ -25,7 +26,7 @@ type Settings = NestSettings & {
    * The CNC sheet: the GORDIX table's work area, or a custom size (mm). In CNC mode the sheet and
    * the gap between parts come from here and from the outline bit, not from the saw settings.
    */
-  cnc: { sheet: 'table' | 'custom'; sheetW: number; sheetH: number };
+  cnc: { sheet: 'table' | 'custom'; sheetW: number; sheetH: number; stock: string };
   /** Machine, tables, bits and G-code settings, shared by the sidebar and the G-code tab (mm, mm/min). */
   cam: CamSettings;
 };
@@ -37,7 +38,7 @@ const DEFAULTS: Settings = {
   mode: 'easy', shape: 'true', rotation: 'free90', effort: 'normal',
   units: 'mm', dxfUnits: 'mm', showCuts: false, showThrough: true, importThickness: 18, importUnits: 'auto',
   workflow: null,
-  cnc: { sheet: 'table', sheetW: 2438.4, sheetH: 1219.2 },
+  cnc: { sheet: 'table', sheetW: 2438.4, sheetH: 1219.2, stock: '2438.4x1219.2' },
   cam: CAM_DEFAULTS,
 };
 
@@ -414,6 +415,8 @@ function syncWorkflow() {
   }
   $('cncBit').innerHTML = c.tools.map((t) => `<option value="${esc(t.id)}">${esc(t.name)} (${Math.round(t.diameter * 1000) / 1000} mm)</option>`).join('');
   $<HTMLSelectElement>('cncBit').value = outlineBit().id;
+  $<HTMLSelectElement>('cncStock').value = s.cnc.stock;
+  $<HTMLButtonElement>('cncSuggest').disabled = suggesting || !state.parts.length;
   const { w, h } = cncSheetSize();
   const fit = gordix ? gordixFit(currentTable(c)) : null;
   const over = fit && source === 'custom' && (w > fit.x * 2 + 0.5 || h > fit.y * 2 + 0.5);
@@ -424,7 +427,9 @@ function syncWorkflow() {
 /** The CNC section edits the same machine, table and bit settings as the G-code tab. */
 function bindCnc() {
   const s = state.settings;
-  const changed = () => { syncControls(); settingsChanged(); };
+  const changed = () => { $('cncSuggestHint').hidden = true; syncControls(); settingsChanged(); };
+  $<HTMLSelectElement>('cncStock').addEventListener('change', (e) => { s.cnc.stock = (e.target as HTMLSelectElement).value; saveSettings(); });
+  $('cncSuggest').addEventListener('click', suggestSize);
   $<HTMLSelectElement>('cncMachine').addEventListener('change', (e) => {
     s.cam.machine = (e.target as HTMLSelectElement).value as CamSettings['machine'];
     s.cam.origin = s.cam.machine === 'gordix' ? 'center' : 'corner';
@@ -442,6 +447,57 @@ function bindCnc() {
     });
     $<HTMLInputElement>(k).addEventListener('change', () => { $<HTMLInputElement>(k).blur(); syncControls(); });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Suggest a CNC sheet size: the smallest piece of the stock sheet (and, on the GORDIX, of what the
+// table reaches) that keeps the parts on as few sheets as possible. Runs in its own worker.
+// ---------------------------------------------------------------------------
+
+let suggesting = false;
+let suggestWorker: Worker | null = null;
+
+function suggestSize() {
+  const s = state.settings;
+  const groups = groupItems(state.parts, state.choices);
+  if (!groups.length || suggesting) return;
+  const [sw, sh] = s.cnc.stock.split('x').map(Number);
+  let maxW = Math.max(sw, sh), maxH = Math.min(sw, sh);
+  const fit = s.cam.machine === 'gordix' ? gordixFit(currentTable(s.cam)) : null;
+  if (fit) { maxW = Math.min(maxW, fit.x * 2); maxH = Math.min(maxH, fit.y * 2); }
+  if (maxH > maxW) [maxW, maxH] = [maxH, maxW];
+  const settings = { ...nestSettings(), sheetW: maxW, sheetH: maxH };
+  const step = s.units === 'in' ? 12.7 : 10;
+  const btn = $<HTMLButtonElement>('cncSuggest');
+  const hint = $('cncSuggestHint');
+  suggesting = true;
+  btn.disabled = true;
+  btn.textContent = 'Searching…';
+  hint.hidden = true;
+  suggestWorker?.terminate();
+  suggestWorker = new Worker(new URL('./nest.worker.ts', import.meta.url), { type: 'module' });
+  const done = () => { suggesting = false; btn.textContent = 'Suggest sheet size'; suggestWorker?.terminate(); suggestWorker = null; syncControls(); };
+  suggestWorker.onmessage = (e: MessageEvent<{ progress?: number; suggestion?: SuggestResult }>) => {
+    if (e.data.progress) { btn.textContent = `Searching… ${e.data.progress}`; return; }
+    const r = e.data.suggestion!;
+    done();
+    s.cnc.sheet = 'custom';
+    s.cnc.sheetW = r.w;
+    s.cnc.sheetH = r.h;
+    const n = r.sheets.reduce((a, b) => a + b, 0);
+    const lost = r.unplaced.reduce((a, b) => a + b, 0);
+    const stockName = $<HTMLSelectElement>('cncStock').selectedOptions[0]?.text ?? 'stock';
+    const limit = fit && (fit.x * 2 < Math.max(sw, sh) || fit.y * 2 < Math.min(sw, sh)) ? `, within the ${fit.x * 2} × ${fit.y * 2} mm the table reaches` : '';
+    hint.innerHTML = `Cut ${n === 1 ? 'one piece' : `${n} pieces`}, <b>${fmtLen(r.w, s.units, false)} × ${fmtLen(r.h, s.units)}</b>, from ${n === 1 ? 'a ' : ''}${esc(stockName)} stock${limit}`
+      + ` · ${(r.fill * 100).toFixed(0)}% used`
+      + (lost ? ` <b class="warnText">· ${lost} part${lost === 1 ? ' is' : 's are'} too big for it</b>` : '');
+    hint.hidden = false;
+    syncControls();
+    if (state.parts.length) repack();
+  };
+  suggestWorker.onerror = (e) => { done(); setStatus(`Couldn't suggest a size: ${e.message}`); };
+  const job: SuggestJob = { id: 0, suggest: { groups: groups.map((g) => g.items), settings, maxW, maxH, step } };
+  suggestWorker.postMessage(job);
 }
 
 let reloadTimer = 0;

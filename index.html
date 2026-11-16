@@ -58,6 +58,18 @@
             <label>Length <input type="number" id="cncW" step="any" min="1" /></label>
             <label>Width <input type="number" id="cncH" step="any" min="1" /></label>
           </div>
+          <div class="suggestRow">
+            <button class="ghost" id="cncSuggest" type="button">Suggest sheet size</button>
+            <label>from <select id="cncStock" aria-label="Stock sheet to cut from">
+              <option value="2438.4x1219.2">4 × 8 ft</option>
+              <option value="2500x1250">2500 × 1250 mm</option>
+              <option value="1525x1525">5 × 5 ft</option>
+              <option value="1219.2x1219.2">4 × 4 ft</option>
+              <option value="1219.2x609.6">2 × 4 ft</option>
+            </select></label>
+            <span class="tip" tabindex="0" role="img" aria-label="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and sets it as a custom sheet. On the GORDIX it also stays inside what the table reaches." data-tip="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and sets it as a custom sheet. On the GORDIX it also stays inside what the table reaches.">i</span>
+          </div>
+          <p class="hint" id="cncSuggestHint" hidden></p>
           <label>Outline bit <select id="cncBit"></select></label>
           <p class="hint" id="cncHint"></p>
         </section>

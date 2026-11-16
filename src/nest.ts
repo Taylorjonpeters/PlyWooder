@@ -148,8 +148,25 @@ class Grid {
   }
 }
 
-function nestTrueShape(items: NestItem[], s: NestSettings) {
-  const { ms, res } = EFFORT[s.effort];
+/**
+ * How many sheets the true-shape nester needs at these settings, searching for at most `ms`.
+ * The search is deterministic for a given sheet size, so a full nest() at the same settings (which
+ * runs the same search for longer) never needs more sheets than this reports. With a `goal`, the
+ * search stops once it is met.
+ */
+export function sheetsNeeded(
+  items: NestItem[], s: NestSettings, ms: number, goal?: { sheets: number; unplaced: number },
+): { sheets: number; unplaced: number } {
+  // Stop as soon as the goal is met: the full search passes through the same layout on its way.
+  const met = goal && ((r: TrueRun) => r.sheets.length <= goal.sheets && r.unplaced.length <= goal.unplaced);
+  const { best } = searchTrueShape(items, s, ms, met);
+  return { sheets: best.sheets.length, unplaced: best.unplaced.length };
+}
+
+type TrueRun = { sheets: { grid: Grid; placed: { item: NestItem; r: Raster; gx: number; gy: number }[] }[]; unplaced: NestItem[] };
+
+function searchTrueShape(items: NestItem[], s: NestSettings, ms: number, met?: (r: TrueRun) => boolean) {
+  const { res } = EFFORT[s.effort];
   const gap = gapOf(s);
   // Usable region: parts keep `edgeMargin` from the sheet edge; their gap halo may reach into it.
   const inset = Math.max(0, s.edgeMargin - gap / 2);
@@ -166,7 +183,7 @@ function nestTrueShape(items: NestItem[], s: NestSettings) {
     rasters.set(it.partId, rots.map((r) => rasterize(grown, res, r)).filter((r) => r.cw <= W && r.ch <= H));
   }
 
-  type Run = { sheets: { grid: Grid; placed: { item: NestItem; r: Raster; gx: number; gy: number }[] }[]; unplaced: NestItem[] };
+  type Run = TrueRun;
   const run = (order: NestItem[]): Run => {
     const out: Run = { sheets: [], unplaced: [] };
     for (const item of order) {
@@ -225,7 +242,7 @@ function nestTrueShape(items: NestItem[], s: NestSettings) {
   // Local search: swap or re-insert parts in the order while time allows.
   const rand = rng(items.length * 7919 + Math.round(s.sheetW));
   const t0 = performance.now();
-  while (items.length > 1 && performance.now() - t0 < ms) {
+  while (items.length > 1 && performance.now() - t0 < ms && !met?.(best)) {
     const o = [...bestOrder];
     const i = Math.floor(rand() * o.length);
     const j = Math.floor(rand() * o.length);
@@ -235,7 +252,12 @@ function nestTrueShape(items: NestItem[], s: NestSettings) {
     consider(o, r);
     if (cost(r) <= cost(best)) { best = r; bestOrder = o; }
   }
+  return { best, pool, inset, res, gap };
+}
 
+function nestTrueShape(items: NestItem[], s: NestSettings) {
+  const { best, pool, inset, res, gap } = searchTrueShape(items, s, EFFORT[s.effort].ms);
+  type Run = TrueRun;
   const build = (r: Run): SheetLayout[] => r.sheets.map((sh) => {
     const placements = sh.placed.map(({ item, r, gx, gy }) => ({
       key: item.key,
