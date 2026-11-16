@@ -249,3 +249,9 @@ i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: no
 .tip { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); font: 600 10px/1 ui-serif, Georgia, serif; font-style: italic; cursor: help; vertical-align: 1px; margin-left: 3px; text-transform: none; letter-spacing: 0; }
 .tip:hover, .tip:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .tipBubble { position: fixed; z-index: 50; max-width: 260px; padding: 7px 10px; border-radius: 7px; background: var(--ink); color: var(--bg); font-size: 12px; line-height: 1.4; pointer-events: none; box-shadow: 0 6px 18px rgb(0 0 0 / 0.2); }
+
+.suggestRow { display: flex; align-items: center; gap: 8px; }
+.suggestRow label { display: flex; align-items: center; gap: 6px; }
+.suggestRow select { min-width: 0; }
+#cncSuggest { white-space: nowrap; flex: none; }
+#cncSuggest:disabled { opacity: 0.6; cursor: progress; }
