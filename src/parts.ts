@@ -93,7 +93,29 @@ export function buildPart(id: number, name: string, mesh: MeshData): Part {
   const faces = analyzeFaces(mesh);
   const planar = faces.filter((f) => f.planar);
   const main = (planar.length ? planar : faces).reduce((a, b) => (b.area > a.area ? b : a));
-  const n = main.normal;
+  let n = main.normal;
+  const span = (dir: V3) => {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      const d = mesh.positions[i] * dir[0] + mesh.positions[i + 1] * dir[1] + mesh.positions[i + 2] * dir[2];
+      if (d < lo) lo = d;
+      if (d > hi) hi = d;
+    }
+    return [lo, hi];
+  };
+  // Face the pockets up: if every pocket opens on the far side, flip the panel over.
+  {
+    const [lo, hi] = span(n);
+    let up = 0, down = 0;
+    for (const f of planar) {
+      const along = dot(f.normal, n);
+      if (Math.abs(along) < 0.9995) continue;
+      const h = along > 0 ? f.offset : -f.offset;
+      if (h <= lo + 0.2 || h >= hi - 0.2) continue;
+      if (along > 0) up++; else down++;
+    }
+    if (down > 0 && up === 0) n = [-n[0], -n[1], -n[2]];
+  }
 
   // Pick u perpendicular to n, using the world axis least aligned with n.
   const axes: V3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
@@ -101,12 +123,7 @@ export function buildPart(id: number, name: string, mesh: MeshData): Part {
   const u = norm(cross(ref, n));
   const v = cross(n, u);
 
-  let nMin = Infinity, nMax = -Infinity;
-  for (let i = 0; i < mesh.positions.length; i += 3) {
-    const d = mesh.positions[i] * n[0] + mesh.positions[i + 1] * n[1] + mesh.positions[i + 2] * n[2];
-    if (d < nMin) nMin = d;
-    if (d > nMax) nMax = d;
-  }
+  const [nMin, nMax] = span(n);
   const thickness = nMax - nMin;
 
   const allFaces = faces.map(({ first, last }) => ({ first, last }));

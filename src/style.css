@@ -169,5 +169,83 @@ details.steps li { white-space: pre-wrap; }
   #sheetsPane { padding: 16px; }
   #viewPane { min-height: 70vh; }
 }
+.dxfOpts { display: grid; gap: 6px; }
 .repack { width: 100%; padding: 10px 12px; animation: pop 0.18s ease-out; }
 @keyframes pop { from { transform: translateY(-4px); opacity: 0; } }
+
+/* G-code workspace */
+:root { --hole: #2f6fb3; --label: #8b3fb3; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --hole: #6fb0ff; --label: #c98bf0; } }
+:root[data-theme='dark'] { --hole: #6fb0ff; --label: #c98bf0; }
+.side .wide { width: 100%; }
+#gcodePane { overflow: hidden; }
+.cam { display: flex; height: 100%; min-height: 0; }
+.cam > .camMain { flex: 1; }
+#camSettings input:not([type]) { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+#camSettings .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.tools { display: grid; gap: 4px; }
+.toolRow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
+.toolRow:first-child { border-top: 0; padding-top: 0; }
+.toolName { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 30px; gap: 6px; }
+.toolRow label { gap: 2px; font-size: 11px; }
+.toolRow input { padding: 5px 6px !important; font-size: 12px; min-width: 0; }
+.toolRow .x { padding: 0; }
+.camMain { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; min-width: 0; min-height: 0; }
+.camMain > * { flex: none; }
+.camMain > .camPreview { flex: 1 1 auto; min-height: 280px; }
+.camBar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.camBar select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.camSummary { color: var(--muted); font-size: 13px; }
+.camSummary b { color: var(--ink); }
+.camSummary .air { color: var(--accent); }
+.camBar .primary { margin-left: auto; }
+#camWarn { margin: 0; font-size: 13px; }
+.camFiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.camFile { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.camFile .n { width: 24px; height: 24px; border-radius: 50%; background: var(--bg); display: grid; place-items: center; font-weight: 600; font-size: 12px; }
+.camFile b { display: block; font-size: 13px; }
+.camFile small { color: var(--muted); font-size: 12px; }
+i.op { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin: 0 4px 2px 0; vertical-align: middle; background: var(--cut); }
+i.op.pocket { background: var(--pocket); } i.op.hole { background: var(--hole); } i.op.label { background: var(--label); }
+i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: none; border-top: 1px dashed var(--muted); height: 0; }
+.camPreview { position: relative; min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+#camSvg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.camKey { position: absolute; left: 10px; top: 8px; display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 3px 8px; border-radius: 6px; }
+#camSvg .reach { fill: none; stroke: var(--accent); stroke-dasharray: 10 6; stroke-width: 1.5px; }
+#camSvg .origin line { stroke: var(--accent); stroke-width: 1.5px; }
+#camSvg .camPart { fill: var(--wood); fill-rule: evenodd; opacity: 0.55; }
+#camSvg .mv { fill: none; stroke-width: 1.2px; stroke-linecap: round; stroke-linejoin: round; }
+#camSvg .mv.outline { stroke: var(--cut); } #camSvg .mv.hole { stroke: var(--hole); } #camSvg .mv.pocket { stroke: var(--pocket); }
+#camSvg .mv.label { stroke: var(--label); } #camSvg .mv.tab { stroke: var(--accent); stroke-width: 4px; }
+#camSvg .mv.rapid { stroke: var(--muted); stroke-dasharray: 3 4; stroke-width: 0.8px; opacity: 0.7; }
+#camSvg.playing .plan { opacity: 0.18; }
+#camSvg #camDone .mv { stroke-width: 2px; }
+#camSvg .tool { fill: color-mix(in srgb, var(--accent) 35%, transparent); stroke: var(--accent); stroke-width: 1.5px; }
+#camSvg .tool.below { fill: color-mix(in srgb, var(--cut) 45%, transparent); stroke: var(--cut); }
+.camPlayer { position: static; transform: none; width: auto; border-radius: 10px; }
+.camReadout { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 230px; text-align: right; }
+@media (max-width: 1000px) {
+  .cam { height: auto; }
+  #gcodePane { overflow: auto; }
+  .camPreview { min-height: 50vh; }
+  .camReadout { min-width: 0; }
+}
+
+/* Saw or CNC */
+#workflow { margin-bottom: 10px; }
+.warnText { color: var(--cut); font-weight: 600; }
+.chooser { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(3px); }
+.chooserBox { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px; width: min(640px, 100%); box-shadow: 0 20px 50px rgb(0 0 0 / 0.25); }
+.chooserBox h2 { margin: 0 0 6px; font-size: 20px; }
+.chooserBox > p { margin: 0 0 16px; color: var(--muted); }
+.chooserCards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chooserCard { display: grid; gap: 6px; align-content: start; text-align: left; padding: 16px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--bg); cursor: pointer; }
+.chooserCard:hover, .chooserCard:focus-visible { border-color: var(--accent); }
+.chooserCard b { font-size: 15px; }
+.chooserCard span { color: var(--muted); font-size: 13px; }
+@media (max-width: 560px) { .chooserCards { grid-template-columns: 1fr; } }
+
+/* Info tooltips */
+.tip { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); font: 600 10px/1 ui-serif, Georgia, serif; font-style: italic; cursor: help; vertical-align: 1px; margin-left: 3px; text-transform: none; letter-spacing: 0; }
+.tip:hover, .tip:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+.tipBubble { position: fixed; z-index: 50; max-width: 260px; padding: 7px 10px; border-radius: 7px; background: var(--ink); color: var(--bg); font-size: 12px; line-height: 1.4; pointer-events: none; box-shadow: 0 6px 18px rgb(0 0 0 / 0.2); }

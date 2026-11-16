@@ -2,7 +2,7 @@
 
 **Try it: https://taylorjonpeters.github.io/PlyWooder/**
 
-Open a STEP file and get plywood cut sheets. Each solid in the file becomes a part. PlyWooder lays the flat parts out on sheets, shows an animation of the model coming apart onto the sheets, and exports DXF files for a CNC.
+Open a STEP or DXF file and get plywood cut sheets. Each solid in the file becomes a part. PlyWooder lays the flat parts out on sheets, shows an animation of the model coming apart onto the sheets, and exports DXF files for a CNC.
 
 ## Run it
 
@@ -11,11 +11,15 @@ npm install
 npm run dev
 ```
 
-Then open the printed URL and drop a `.step` / `.stp` file onto the page.
+Then open the printed URL and drop a `.step`, `.stp` or `.dxf` file onto the page.
 
 ## What it does
 
 - **Reads the parts.** Each solid's largest flat face sets its thickness direction. The tool projects the solid onto that face to get the true through-cut outline: notches, slots and through holes. Faces that sit between the two skins become pockets, with their depth. Parts that are not flat stock (such as turned legs) start unticked.
+- **Reads DXF drawings too.** Supports lines, arcs, circles, polylines (including bulge arcs), ellipses, splines and block inserts. Open pieces are joined end to end into closed outlines. A loop inside another loop is a hole, and a loop inside a hole is a part of its own. Text inside an outline names the part. Outlines on `POCKET_*` layers become pockets. A drawn sheet border is skipped. Units come from the file's `$INSUNITS`, or you can set them. You set the thickness, since a drawing is flat. Re-importing a PlyWooder export brings the parts back with their names and skips its helper layers.
+- **Saw or CNC.** On first visit you choose how you're cutting; a switch at the top of the sidebar changes it later. The sidebar, tabs, packing and exports follow:
+  - *Saw* (table saw or track saw): strips-and-rows packing on a standard sheet with your blade width, a numbered through-cut order, and DXF/SVG of each sheet.
+  - *CNC router*: true-shape nesting. Pick the machine, the GORDIX table and the outline bit in the sidebar; the sheet is that table's work area (or a custom size, checked against it) and parts sit one bit apart. The G-code tab edits the same machine, table and bit settings, so the layout and the G-code always agree.
 - **Groups by thickness.** Each stock thickness gets its own set of sheets. When the parts don't fit on one sheet, the layout continues onto more.
 - **Two packing modes.**
   - *Manual cut*: three-stage guillotine layout. Crosscut strips, rip rows, then crosscut parts. Every cut runs edge to edge, so a table saw or track saw works.
@@ -27,15 +31,27 @@ Then open the printed URL and drop a `.step` / `.stp` file onto the page.
 - **Display.** Toggle between actual cuts and convex hulls. Hulls also pack as hulls, so no part goes into another part's notch. Lengths show in mm or inches.
 - **Rotation.** Any 90° turn, grain-locked (0°/180° only), or 45° and 15° steps.
 - **Export.** DXF (R12, mm or inches), per sheet or all sheets, plus SVG. DXF layers: `CUT_OUTSIDE`, `CUT_INSIDE`, `POCKET_<depth>`, `CUT_PATHS`, `SAW_CUTS`, `LABELS`, `SHEET`. `CUT_PATHS` holds the merged tool-centre passes in cutting order. Profile it *on the line* with the same bit, so shared edges are cut once. Round holes are written as true circles. DWG is a closed Autodesk format. Every CAM package reads DXF, and any CAD program can re-save it as DWG.
+- **G-code tab.** A CAM workspace for each sheet of the layout. It writes `.gcode` for the [GORDIX](https://gordix.muherz.com/en/) in the dialect [GORDIX Studio](https://pfsin555.github.io/Gordix-studio/) writes ([source](https://github.com/pfsin555/Gordix-studio)), or for a generic GRBL machine.
+  - **Operations, in order:** laser part labels (optional), pockets, holes and slots, then outlines. Holes are cut while the part around them is still attached. Outlines use the merged cut network, so shared edges are cut once.
+  - **Bits:** a bit library (diameter, feed, plunge, depth per pass), with a bit picked for each operation. The GORDIX has no tool changer, so consecutive operations on one bit share a file and each bit change starts a new file. Each file's header says which bit to load and to re-zero Z.
+  - **Fit:** measured stock thickness for each thickness in the layout, which sets the through and tab depths. A fit allowance makes slots, holes and pockets wider and tabs and outlines narrower. Dogbone corners notch inside corners so square tabs seat.
+  - **Cutting:** depth steps per bit, cut past bottom, safe height, pocket stepover, and optional ramped entry. Ramping is off by default, as GORDIX Studio plunges straight down and its editor can't read the step-down of a ramped file. Holding tabs go on outlines, and optionally on holes.
+  - **Preview:** the toolpaths per operation, tabs, travel moves, the GORDIX work area and the origin. A play/scrub bar moves the bit through the whole job with its file, operation, Z and elapsed time. There's a run-time estimate for each file and for the job.
+  - **GORDIX dialect:** `G21 G90 G0 G1` and `;` comments only. F is modal and rapids carry `F2000`, because the GORDIX applies F to `G0`. Router files never send `M3`/`M5`, which switch the GORDIX laser; label files use `M03 S255` / `M05` like Studio's. X0 Y0 is the sheet centre, Z0 the top of the material, and files end at X0 Y0.
+  - **GRBL dialect:** `M3 S<rpm>` / `M5`, `M4` for the laser, a lower-left origin and `M30`.
+  - **Tables and work area:** the GORDIX reaches less than the table it stands on. Pick one of its five tables, or load your own `table.cfg` exported from GORDIX Studio's table setup page. The tables are saved with your settings. *Use work area as sheet size* re-packs onto the area that table reaches, using Studio's formula: Studio's default 2560 × 1460 mm table gives 2280 × 1038 mm, and a 4 × 8 ft table gives 2158 × 830 mm. On a table whose X side (S) is the short one, the G-code turns the sheet 90° so its long side runs along machine Y, and the file header says so. Cuts outside the work area, or deeper than the 30 mm Z travel, are flagged.
+  - **Air cut:** raises the whole job for a dry run.
 - **3D / Animate.** The model as designed, then every part flies to its spot on the sheet. Use play/pause and scrub.
 
 ## Tests
 
 ```bash
 npm test -- path/to/model.step
+npm run test:dxf
+npm run test:cam
 ```
 
-Runs the STEP → parts → nesting → DXF pipeline in Node. It checks that no two parts come closer than the requested gap and that every part stays on the sheet.
+`npm test` runs the STEP → parts → nesting → DXF pipeline in Node. `npm run test:dxf` re-imports that DXF, and also imports a hand-written drawing with arcs, bulges, blocks, inch units and a sheet border. `npm run test:cam` checks the toolpaths and G-code on hand-made parts and the samples, one behaviour per check. The checks cover cut order, one file per bit change, depths and measured thickness, ramping, tabs, dogbones reaching slot and notch corners, fit allowance, both dialects, laser labels, air cut, and the GORDIX work area. It writes sample files to `scripts/out/`. The DXF test also checks that no two parts come closer than the requested gap and that every part stays on the sheet.
 
 ## License
 

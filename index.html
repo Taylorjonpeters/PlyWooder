@@ -15,15 +15,54 @@
         </header>
 
         <section>
+          <div class="seg" id="workflow" role="group" aria-label="How you're cutting">
+            <button data-v="saw">Saw</button>
+            <button data-v="cnc">CNC router</button>
+          </div>
           <label class="drop" id="drop">
-            <input type="file" id="file" accept=".step,.stp,.STEP,.STP" hidden />
-            <strong id="fileName">Open a STEP file</strong>
+            <input type="file" id="file" accept=".step,.stp,.dxf,.STEP,.STP,.DXF" hidden />
+            <strong id="fileName">Open a STEP or DXF file</strong>
             <span id="fileHint">or drop it anywhere</span>
           </label>
+          <div class="dxfOpts" id="dxfOpts" hidden>
+            <div class="row2">
+              <label>Thickness <input type="number" id="importThickness" step="any" min="0.1" /></label>
+              <label>Drawing units
+                <select id="importUnits">
+                  <option value="auto">From file</option>
+                  <option value="mm">mm</option>
+                  <option value="cm">cm</option>
+                  <option value="in">inches</option>
+                </select>
+              </label>
+            </div>
+            <p class="hint" id="dxfHint"></p>
+          </div>
           <button class="primary repack" id="repack" hidden>Repack</button>
         </section>
 
-        <section>
+        <!-- The sidebar follows the tab: layout settings for Sheets and 3D, CAM settings for G-code. -->
+        <div id="layoutSettings">
+        <section id="cncSection" data-flow="cnc">
+          <h2>Machine and sheet</h2>
+          <label>Machine <select id="cncMachine">
+            <option value="gordix">GORDIX</option>
+            <option value="grbl">Other CNC (GRBL or DXF to CAM)</option>
+          </select></label>
+          <label id="cncTableRow">GORDIX table <select id="cncTable"></select></label>
+          <label>Sheet <select id="cncSheet">
+            <option value="table">The table's work area</option>
+            <option value="custom">Custom size</option>
+          </select></label>
+          <div class="row2" id="cncCustom">
+            <label>Length <input type="number" id="cncW" step="any" min="1" /></label>
+            <label>Width <input type="number" id="cncH" step="any" min="1" /></label>
+          </div>
+          <label>Outline bit <select id="cncBit"></select></label>
+          <p class="hint" id="cncHint"></p>
+        </section>
+
+        <section id="sawSheet" data-flow="saw">
           <h2>Sheet</h2>
           <select id="sheetPreset">
             <option value="2438.4x1219.2">4 × 8 ft (2438 × 1219 mm)</option>
@@ -42,11 +81,6 @@
 
         <section>
           <h2>Packing</h2>
-          <div class="seg" id="mode">
-            <button data-v="easy">Manual cut</button>
-            <button data-v="optimal">CNC cut</button>
-          </div>
-          <p class="hint" id="modeHint"></p>
           <label>Rotation
             <select id="rotation">
               <option value="free90">Any 90° turn</option>
@@ -55,7 +89,7 @@
               <option value="deg15">15° steps</option>
             </select>
           </label>
-          <label id="effortRow">Search effort
+          <label id="effortRow" data-flow="cnc">Search effort
             <select id="effort">
               <option value="quick">Quick</option>
               <option value="normal">Normal</option>
@@ -67,10 +101,9 @@
         <section>
           <h2>Margins</h2>
           <label>Sheet edge margin <input type="number" id="edgeMargin" step="any" min="0" /></label>
-          <label>Bit / blade width <input type="number" id="kerf" step="any" min="0" /></label>
-          <label class="check"><input type="checkbox" id="shareCuts" /> Share cuts between neighbouring parts</label>
-          <label id="errorGapRow">Extra gap for human error <input type="number" id="errorGap" step="any" min="0" /></label>
-          <p class="hint" id="gapHint"></p>
+          <label data-flow="saw">Blade width (kerf) <input type="number" id="kerf" step="any" min="0" /></label>
+          <label class="check"><input type="checkbox" id="shareCuts" /> Share cuts between parts <span class="tip" tabindex="0" role="img" aria-label="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges." data-tip="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges.">i</span></label>
+          <label id="errorGapRow">Extra gap between parts <input type="number" id="errorGap" step="any" min="0" /></label>
         </section>
 
         <section>
@@ -79,8 +112,8 @@
             <button data-v="true">Actual cuts</button>
             <button data-v="hull">Convex hull</button>
           </div>
-          <label class="check"><input type="checkbox" id="showThrough" /> Show through cuts</label>
-          <label class="check"><input type="checkbox" id="showCuts" /> Show CNC cut paths</label>
+          <label class="check" data-flow="saw"><input type="checkbox" id="showThrough" /> Show through cuts</label>
+          <label class="check" data-flow="cnc"><input type="checkbox" id="showCuts" /> Show CNC cut paths</label>
           <div class="seg" id="units">
             <button data-v="mm">mm</button>
             <button data-v="in">inches</button>
@@ -93,26 +126,31 @@
         </section>
 
         <section id="exportSection" hidden>
-          <h2>Export for CNC</h2>
+          <h2>Export</h2>
           <div class="seg" id="dxfUnits">
             <button data-v="mm">DXF in mm</button>
             <button data-v="in">DXF in inches</button>
           </div>
           <button class="primary" id="exportAll">Download all sheets (.dxf)</button>
-          <p class="hint">DXF opens in VCarve, Fusion, Carbide Create, Easel and other CAM tools. DWG is Autodesk-only; any CAD program can save this DXF as DWG. Layers: CUT_OUTSIDE, CUT_INSIDE, POCKET_*, SAW_CUTS, LABELS, plus CUT_PATHS — the merged tool-centre paths in cutting order. Run CUT_PATHS as an on-the-line profile with the same bit to cut shared edges once.</p>
+          <p class="hint" data-flow="cnc">Layers for any CAM program <span class="tip" tabindex="0" role="img" aria-label="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET." data-tip="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET.">i</span></p>
+
+          <button class="primary wide" id="openGcode" type="button" data-flow="cnc">Make G-code →</button>
         </section>
+        </div>
+        <div id="camSettings" hidden></div>
       </aside>
 
       <main class="main">
         <nav class="tabs">
           <button data-tab="sheets" class="on">Sheets</button>
           <button data-tab="3d">3D / Animate</button>
+          <button data-tab="gcode" data-flow="cnc">G-code</button>
           <span class="status" id="status"></span>
         </nav>
         <div class="pane" id="sheetsPane">
           <div class="empty" id="empty">
-            <h2>Open a STEP file to get started</h2>
-            <p>Each solid becomes a part. Flat parts are laid out on sheets, grouped by thickness.</p>
+            <h2>Open a STEP or DXF file to get started</h2>
+            <p>Each solid or closed outline becomes a part.</p>
           </div>
           <div id="sheets"></div>
         </div>
@@ -123,9 +161,54 @@
             <input type="range" id="scrub" min="0" max="1000" value="0" />
           </div>
         </div>
+        <div class="pane" id="gcodePane" hidden>
+          <div class="empty" id="camEmpty">
+            <h2>G-code</h2>
+            <p>Open a file to see each sheet's toolpaths here.</p>
+          </div>
+          <div class="cam" id="camBody" hidden>
+            <div class="camMain">
+              <div class="camBar">
+                <select id="camSheet" aria-label="Sheet"></select>
+                <span class="camSummary" id="camSummary"></span>
+                <button class="primary" id="camDownloadAll">Download all files</button>
+              </div>
+              <div class="warn" id="camWarn" hidden></div>
+              <div class="camFiles" id="camFiles"></div>
+              <div class="camPreview">
+                <svg id="camSvg" role="img" aria-label="Toolpath preview"></svg>
+                <div class="camKey">
+                  <span><i class="op pocket"></i>Pockets</span><span><i class="op hole"></i>Holes</span><span><i class="op outline"></i>Outlines</span>
+                  <span><i class="op tab"></i>Tabs</span><span><i class="op label"></i>Labels</span><span><i class="op rapid"></i>Travel</span>
+                </div>
+              </div>
+              <div class="player camPlayer">
+                <button id="camPlay" aria-label="Play">▶</button>
+                <input type="range" id="camScrub" min="0" max="1" value="0" aria-label="Job progress" />
+                <span class="camReadout" id="camReadout"></span>
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
-    <div class="dropOverlay" id="dropOverlay">Drop a STEP file</div>
+    <div class="chooser" id="chooser" hidden>
+      <div class="chooserBox" role="dialog" aria-modal="true" aria-labelledby="chooserTitle">
+        <h2 id="chooserTitle">How are you cutting?</h2>
+        <p>You can switch later at the top of the sidebar.</p>
+        <div class="chooserCards">
+          <button class="chooserCard" data-flow-pick="saw">
+            <b>Table saw or track saw</b>
+            <span>Strips and rows, every cut edge to edge, with a numbered cut order.</span>
+          </button>
+          <button class="chooserCard" data-flow-pick="cnc">
+            <b>CNC router</b>
+            <span>Tight true-shape nesting, sized to your machine and bit, with G-code for GORDIX or GRBL.</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="dropOverlay" id="dropOverlay">Drop a STEP or DXF file</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

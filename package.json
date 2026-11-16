@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "tsx scripts/pipeline-test.ts"
+    "test": "tsx scripts/pipeline-test.ts",
+    "test:dxf": "tsx scripts/dxf-import-test.ts",
+    "test:cam": "tsx scripts/cam-test.ts"
   },
   "dependencies": {
     "clipper-lib": "^6.4.2",
