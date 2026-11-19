@@ -1,5 +1,11 @@
 # Third-party notices
 
+## Libraries
+
+- [three.js](https://threejs.org): MIT
+- [Clipper](https://sourceforge.net/projects/jsclipper/): Boost Software License
+- [occt-import-js](https://github.com/kovacsv/occt-import-js): a WebAssembly build of [Open CASCADE](https://dev.opencascade.org) (LGPL-2.1). It ships as its own separate `.wasm` file.
+
 ## GORDIX Studio
 
 PlyWooder's GORDIX G-code support follows [GORDIX Studio](https://github.com/pfsin555/Gordix-studio) ([site](https://pfsin555.github.io/Gordix-studio/)). It uses Studio's G-code dialect, default tables, `table.cfg` format, work-area formula, and feed and tab defaults.
