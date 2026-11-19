@@ -7,6 +7,13 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 2.5v11l9-5.5z" fill="currentColor" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 16 16"><path d="M3.5 2.5h3.2v11H3.5zM9.3 2.5h3.2v11H9.3z" fill="currentColor" /></symbol>
+      <symbol id="i-close" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></symbol>
+      <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M2.5 8h10.5M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></symbol>
+    </svg>
     <div class="app">
       <aside class="side">
         <header class="brand">
@@ -59,7 +66,7 @@
             <label>Width <input type="number" id="cncH" step="any" min="1" /></label>
           </div>
           <div class="suggestRow">
-            <button class="ghost" id="cncSuggest" type="button">Suggest sheet size</button>
+            <button class="ghost" id="cncSuggest" type="button">Suggest size</button>
             <label>from <select id="cncStock" aria-label="Stock sheet to cut from">
               <option value="2438.4x1219.2">4 × 8 ft</option>
               <option value="2500x1250">2500 × 1250 mm</option>
@@ -146,7 +153,7 @@
           <button class="primary" id="exportAll">Download all sheets (.dxf)</button>
           <p class="hint" data-flow="cnc">Layers for any CAM program <span class="tip" tabindex="0" role="img" aria-label="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET." data-tip="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET.">i</span></p>
 
-          <button class="primary wide" id="openGcode" type="button" data-flow="cnc">Make G-code →</button>
+          <button class="primary wide" id="openGcode" type="button" data-flow="cnc">Make G-code <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
         </section>
         </div>
         <div id="camSettings" hidden></div>
@@ -169,7 +176,7 @@
         <div class="pane" id="viewPane" hidden>
           <div id="view3d"></div>
           <div class="player">
-            <button id="play">▶</button>
+            <button id="play" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play" /></svg></button>
             <input type="range" id="scrub" min="0" max="1000" value="0" />
           </div>
         </div>
@@ -195,7 +202,7 @@
                 </div>
               </div>
               <div class="player camPlayer">
-                <button id="camPlay" aria-label="Play">▶</button>
+                <button id="camPlay" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play" /></svg></button>
                 <input type="range" id="camScrub" min="0" max="1" value="0" aria-label="Job progress" />
                 <span class="camReadout" id="camReadout"></span>
               </div>

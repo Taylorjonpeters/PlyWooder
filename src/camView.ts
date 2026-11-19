@@ -4,6 +4,7 @@ import {
 } from './cam';
 import { writeGcode, estimateSeconds, cutLength, MACHINES } from './gcode';
 import { tip } from './tip';
+import { icon, setPlayState } from './icons';
 
 /** One sheet of the current layout, as the workspace sees it. */
 export type CamSheetRef = { label: string; sheet: CamSheet; fileBase: string };
@@ -229,7 +230,7 @@ export class CamWorkspace {
     if (this.playing) { this.pause(); return; }
     if (this.step >= this.timeline.length) this.setStep(0);
     this.playing = true;
-    this.$('camPlay').textContent = '❚❚';
+    setPlayState(this.$('camPlay'), true);
     // Play the whole job in about 20 seconds, whatever its length.
     const perFrame = Math.max(1, Math.ceil(this.timeline.length / (20 * 60)));
     const tick = () => {
@@ -243,7 +244,7 @@ export class CamWorkspace {
 
   private pause() {
     this.playing = false;
-    this.$('camPlay').textContent = '▶';
+    setPlayState(this.$('camPlay'), false);
   }
 
   // -------------------------------------------------------------------------
@@ -285,11 +286,11 @@ export class CamWorkspace {
           }).join('')}</select></label>
           ${fit.rotate ? `<p class="hint">Sheet turned 90° ${tip("This table's X side (S) is its short one, so the G-code runs the sheet's long side along side W.")}</p>` : ''}
           <div class="pair">
-            <button class="ghost" id="camLoadTables" type="button" title="Exported from GORDIX Studio's table setup page">Load table.cfg…</button>
+            <button class="ghost" id="camLoadTables" type="button" data-tip="Exported from GORDIX Studio's table setup page">Load table.cfg…</button>
             <button class="ghost" id="camResetTables" type="button" ${c.tablesFile ? '' : 'disabled'}>Studio defaults</button>
           </div>
           <input type="file" id="camTableFile" accept=".cfg,.txt,text/plain" hidden />
-          <button class="ghost wide" id="camWorkArea" type="button" title="The GORDIX reaches less than its table">Use work area as sheet (${fit.x * 2} × ${fit.y * 2} mm)</button>`
+          <button class="ghost wide" id="camWorkArea" type="button" data-tip="The GORDIX reaches less than its table">Use work area as sheet (${fit.x * 2} × ${fit.y * 2} mm)</button>`
         : numIn('rpm', 'Spindle RPM', 0, '100', '0 leaves the spindle command out.')}
       </section>
 
@@ -299,7 +300,7 @@ export class CamWorkspace {
           ${c.tools.map((t, i) => `<div class="toolRow">
             <div class="toolName">
               <input data-tool="${i}" data-f="name" value="${esc(t.name)}" aria-label="Bit name"/>
-              <button class="ghost x" data-del="${i}" title="Remove this bit" aria-label="Remove ${esc(t.name)}" ${c.tools.length < 2 ? 'disabled' : ''}>✕</button>
+              <button class="ghost x" data-del="${i}" data-tip="Remove this bit" aria-label="Remove ${esc(t.name)}" ${c.tools.length < 2 ? 'disabled' : ''}>${icon('close')}</button>
             </div>
             <label><span>Ø mm</span><input type="number" data-tool="${i}" data-f="diameter" value="${t.diameter}" min="0.1" step="any"/></label>
             <label><span>Feed</span><input type="number" data-tool="${i}" data-f="feed" value="${t.feed}" min="1" step="any"/></label>
@@ -307,7 +308,7 @@ export class CamWorkspace {
             <label><span>Per pass</span><input type="number" data-tool="${i}" data-f="depthPerPass" value="${t.depthPerPass}" min="0.1" step="any"/></label>
           </div>`).join('')}
         </div>
-        <button class="ghost" id="camAddTool" type="button">+ Add bit</button>
+        <button class="ghost" id="camAddTool" type="button">${icon('plus')} Add bit</button>
       </section>
 
       <section>

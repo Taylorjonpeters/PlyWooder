@@ -11,6 +11,7 @@ import { toDxf, toSvg, type DxfSheet } from './dxf';
 import { CAM_DEFAULTS, DEFAULT_TOOLS, STUDIO_TABLES, currentTable, gordixFit, type CamSettings } from './cam';
 import { CamWorkspace, type CamSheetRef } from './camView';
 import { initTips } from './tip';
+import { setPlayState } from './icons';
 import { View3D, type Sheet3D, type SheetPlacement } from './view3d';
 import { fmtLen, toUnits, fromUnits, type Units } from './units';
 import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
@@ -280,7 +281,6 @@ function syncControls() {
   $<HTMLInputElement>('showCuts').checked = s.showCuts;
   $<HTMLInputElement>('showThrough').checked = s.showThrough;
   $<HTMLInputElement>('errorGap').disabled = s.shareCuts;
-  $('errorGapRow').style.opacity = s.shareCuts ? '0.45' : '';
   syncWorkflow();
 }
 
@@ -362,11 +362,11 @@ function bindControls() {
 
   $('play').addEventListener('click', () => {
     if (view3d.isPlaying) view3d.pause(); else view3d.play();
-    $('play').textContent = view3d.isPlaying ? '❚❚' : '▶';
+    setPlayState($('play'), view3d.isPlaying);
   });
   $<HTMLInputElement>('scrub').addEventListener('input', (e) => {
     view3d.pause();
-    $('play').textContent = '▶';
+    setPlayState($('play'), false);
     view3d.setProgress(Number((e.target as HTMLInputElement).value) / 1000);
   });
 }
@@ -476,7 +476,7 @@ function suggestSize() {
   hint.hidden = true;
   suggestWorker?.terminate();
   suggestWorker = new Worker(new URL('./nest.worker.ts', import.meta.url), { type: 'module' });
-  const done = () => { suggesting = false; btn.textContent = 'Suggest sheet size'; suggestWorker?.terminate(); suggestWorker = null; syncControls(); };
+  const done = () => { suggesting = false; btn.textContent = 'Suggest size'; suggestWorker?.terminate(); suggestWorker = null; syncControls(); };
   suggestWorker.onmessage = (e: MessageEvent<{ progress?: number; suggestion?: SuggestResult }>) => {
     if (e.data.progress) { btn.textContent = `Searching… ${e.data.progress}`; return; }
     const r = e.data.suggestion!;
@@ -536,9 +536,9 @@ function renderParts() {
     row.dataset.part = String(p.id);
     row.innerHTML = `
       <input type="checkbox" ${c.include ? 'checked' : ''} aria-label="Include ${esc(p.name)}" />
-      <div class="name" title="${esc(p.name)}">${esc(p.name)}
+      <div class="name" data-tip="${esc(p.name)}">${esc(p.name)}
         <span class="dims">${fmtLen(p.w, units, false)} × ${fmtLen(p.h, units, false)} × ${fmtLen(p.thickness, units)}${p.isPanel ? '' : ' · not flat stock'}</span></div>
-      <input type="number" min="0" step="1" value="${c.qty}" aria-label="Quantity" title="Quantity" />`;
+      <input type="number" min="0" step="1" value="${c.qty}" aria-label="Quantity" data-tip="Quantity" />`;
     const [check, qty] = row.querySelectorAll('input');
     check.addEventListener('change', () => { c.include = check.checked; renderParts(); settingsChanged(); });
     qty.addEventListener('input', () => {
@@ -773,7 +773,7 @@ const cam = new CamWorkspace({
 const view3d = new View3D($('view3d'));
 view3d.onProgress = (t) => {
   $<HTMLInputElement>('scrub').value = String(Math.round(t * 1000));
-  if (t >= 1) $('play').textContent = '▶';
+  if (t >= 1) setPlayState($('play'), false);
 };
 
 function update3d() {
@@ -798,7 +798,7 @@ function update3d() {
   if (state.autoplayPending && sheets.length) {
     state.autoplayPending = false;
     view3d.setProgress(0);
-    setTimeout(() => { view3d.play(); $('play').textContent = '❚❚'; }, 600);
+    setTimeout(() => { view3d.play(); setPlayState($('play'), true); }, 600);
   }
 }
 
