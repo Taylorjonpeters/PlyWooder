@@ -1,3 +1,5 @@
+import '@fontsource-variable/space-grotesk';
+import '@fontsource-variable/schibsted-grotesk';
 import occtimportjs from 'occt-import-js';
 import occtWasmUrl from 'occt-import-js/dist/occt-import-js.wasm?url';
 import { partsFromStep, type Part, type Occt } from './parts';

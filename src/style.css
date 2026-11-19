@@ -46,6 +46,8 @@
   --fs-md: 14px;
   --fs-lg: 16px;
   --fs-xl: 22px;
+  --font-head: 'Space Grotesk Variable', 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   /* Control heights: 36 for fields and buttons, 30 inside cards and dense lists */
   --control-h: 36px;
   --control-h-sm: 30px;
@@ -92,9 +94,10 @@ html, body { margin: 0; height: 100%; }
 body {
   background: var(--bg);
   color: var(--ink);
-  font: var(--fs-md)/1.4 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font: var(--fs-md)/1.4 var(--font-body);
 }
 button, input, select { font: inherit; color: inherit; }
+h1, h2, h3, .chooserCard b { font-family: var(--font-head); }
 
 /* Focus: one visible ring on everything you can reach with the keyboard. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -115,8 +118,13 @@ input:focus-visible, select:focus-visible, .seg button:focus-visible { outline-o
 .app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
 .side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: var(--sp-4) var(--sp-4) 0; }
 #layoutSettings, #camSettings { padding-bottom: var(--sp-5); }
+.brand { display: flex; align-items: center; gap: var(--sp-3); }
+.brand .mascot { width: 56px; height: 56px; flex: none; }
 .brand h1 { margin: 0; font-size: var(--fs-xl); letter-spacing: -0.02em; }
 .brand p { margin: 2px 0 0; color: var(--muted); }
+.brand .credit { font-size: var(--fs-xs); }
+.brand .credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.brand .credit a:hover { color: var(--ink); }
 
 section { margin-top: var(--sp-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
 /* Section label: the small caps heading in the sidebar. */
