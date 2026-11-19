@@ -714,7 +714,7 @@ function cutText(c: ThroughCut): string {
   const { units } = state.settings;
   const kind = c.vertical ? 'Crosscut' : 'Rip';
   const from = c.vertical ? 'left' : 'bottom';
-  return `${kind} ${fmtLen(c.offset, units)} in from the ${from} edge of the piece (${fmtLen(c.length, units)} long).`;
+  return `${kind} ${fmtLen(c.offset, units)} in from the ${from} edge of ${c.piece} (${fmtLen(c.length, units)} long).`;
 }
 
 /** Metres or feet of cutting. */

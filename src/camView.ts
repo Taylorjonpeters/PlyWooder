@@ -141,7 +141,7 @@ export class CamWorkspace {
       const what = f.kind === 'laser' ? 'Laser module' : `${esc(f.tool!.name)} · ${num(f.tool!.diameter)} mm`;
       return `<div class="camFile">
         <span class="n">${i + 1}</span>
-        <div><b>${what}</b><small>${f.ops.map((o) => `<i class="op ${o}"></i>${OP_NAME[o]}`).join(' ')} · ${fmtTime(times[i])} · ${(cutLength(f.moves) / 1000).toFixed(1)} m</small></div>
+        <div><b>${what}</b><small class="ops">${f.ops.map((o) => `<span><i class="op ${o}"></i>${OP_NAME[o]}</span>`).join('')}</small><small>${fmtTime(times[i])} · ${(cutLength(f.moves) / 1000).toFixed(1)} m of cutting</small></div>
         <button class="ghost" data-dl="${i}">Download</button>
       </div>`;
     }).join('');

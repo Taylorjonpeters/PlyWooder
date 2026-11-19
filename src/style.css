@@ -328,11 +328,12 @@ details.steps li { white-space: pre-wrap; }
 .camSummary .air { color: var(--accent); }
 .camBar .primary { margin-left: auto; }
 #camWarn { margin: 0; }
-.camFiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-2); }
+.camFiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--sp-2); }
 .camFile { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center; padding: var(--sp-2) var(--sp-3); }
 .camFile .n { width: 24px; height: 24px; border-radius: 50%; background: var(--bg); display: grid; place-items: center; font-weight: 600; font-size: var(--fs-xs); }
 .camFile b { display: block; font-size: var(--fs-sm); }
-.camFile small { color: var(--muted); font-size: var(--fs-xs); }
+.camFile small { display: block; color: var(--muted); font-size: var(--fs-xs); }
+.camFile .ops { display: flex; flex-wrap: wrap; gap: 0 var(--sp-3); }
 i.op { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin: 0 4px 2px 0; vertical-align: middle; background: var(--cut); }
 i.op.pocket { background: var(--pocket); } i.op.hole { background: var(--hole); } i.op.label { background: var(--label); }
 i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: none; border-top: 1px dashed var(--muted); height: 0; }
