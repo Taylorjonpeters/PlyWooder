@@ -350,7 +350,7 @@ export class CamWorkspace {
         </select></label>
         ${gordix ? `<label>${lt('GORDIX table', `${c.tablesFile ? `From ${c.tablesFile}` : "GORDIX Studio's default tables"}. Table ${table.id}: S ${num(table.S)}, W ${num(table.W)}, E ${num(table.E)}, N ${num(table.N)}, diagonal ${num(table.D)} mm. Also sets the layout's sheet.`)}<select data-k="tableId" data-num="1">${tables.map((t) => {
             const f = gordixFit(t);
-            return `<option value="${t.id}" ${t.id === table.id ? 'selected' : ''}>${t.id}: ${num(t.S)} × ${num(t.W)} → cuts ${f.x * 2} × ${f.y * 2}</option>`;
+            return `<option value="${t.id}" ${t.id === table.id ? 'selected' : ''}>${t.id}: ${num(t.S)} × ${num(t.W)} mm · cuts ${f.x * 2} × ${f.y * 2} mm</option>`;
           }).join('')}</select></label>
           ${fit.rotate ? `<p class="hint">Sheet turned 90° ${tip("This table's X side (S) is its short one, so the G-code runs the sheet's long side along side W.")}</p>` : ''}
           <div class="pair">
@@ -372,10 +372,10 @@ export class CamWorkspace {
               <input data-tool="${i}" data-f="name" value="${esc(t.name)}" aria-label="Bit name"/>
               <button class="ghost x" data-del="${i}" data-tip="Remove this bit" aria-label="Remove ${esc(t.name)}" ${c.tools.length < 2 ? 'disabled' : ''}>${icon('close')}</button>
             </div>
-            <label><span>Ø mm</span><input type="number" data-tool="${i}" data-f="diameter" value="${t.diameter}" min="0.1" step="any"/></label>
-            <label><span>Feed</span><input type="number" data-tool="${i}" data-f="feed" value="${t.feed}" min="1" step="any"/></label>
-            <label><span>Plunge</span><input type="number" data-tool="${i}" data-f="plungeFeed" value="${t.plungeFeed}" min="1" step="any"/></label>
-            <label><span>Per pass</span><input type="number" data-tool="${i}" data-f="depthPerPass" value="${t.depthPerPass}" min="0.1" step="any"/></label>
+            <label><span>Ø (mm)</span><input type="number" data-tool="${i}" data-f="diameter" value="${t.diameter}" min="0.1" step="any"/></label>
+            <label><span>Feed (mm/min)</span><input type="number" data-tool="${i}" data-f="feed" value="${t.feed}" min="1" step="any"/></label>
+            <label><span>Plunge (mm/min)</span><input type="number" data-tool="${i}" data-f="plungeFeed" value="${t.plungeFeed}" min="1" step="any"/></label>
+            <label><span>Per pass (mm)</span><input type="number" data-tool="${i}" data-f="depthPerPass" value="${t.depthPerPass}" min="0.1" step="any"/></label>
           </div>`).join('')}
         </div>
         <button class="ghost" id="camAddTool" type="button">${icon('plus')} Add bit</button>

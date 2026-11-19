@@ -454,7 +454,7 @@ function syncWorkflow() {
   const tables = c.tables.length ? c.tables : STUDIO_TABLES;
   $('cncTable').innerHTML = tables.map((t) => {
     const f = gordixFit(t);
-    return `<option value="${t.id}">${t.id}: ${Math.round(t.S)} × ${Math.round(t.W)} → cuts ${f.x * 2} × ${f.y * 2}</option>`;
+    return `<option value="${t.id}">${t.id}: ${Math.round(t.S)} × ${Math.round(t.W)} mm · cuts ${f.x * 2} × ${f.y * 2} mm</option>`;
   }).join('');
   $<HTMLSelectElement>('cncTable').value = String(currentTable(c).id);
   const sheetSel = $<HTMLSelectElement>('cncSheet');
