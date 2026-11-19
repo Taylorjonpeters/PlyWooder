@@ -211,6 +211,7 @@ details.collapse > .parts { margin-top: var(--sp-2); }
 #skippedNote { margin: 0 0 var(--sp-4); }
 .empty { max-width: 460px; margin: 12vh auto; text-align: center; color: var(--muted); }
 .empty h2 { color: var(--ink); font-size: var(--fs-xl); }
+.loading .mascot { display: block; width: 112px; height: 112px; margin: 0 auto var(--sp-2); }
 
 /* Title: the heading above a group of cards in the main area. */
 .group { margin-bottom: 28px; }

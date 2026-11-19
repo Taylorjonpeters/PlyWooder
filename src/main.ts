@@ -97,8 +97,16 @@ const getOcct = () => (occtPromise ??= occtimportjs({ locateFile: () => occtWasm
 /** The open DXF's text, kept so thickness or units can be changed without reopening it. */
 let dxfText: string | null = null;
 
+/** Show the mascot and a message in the main pane while a file opens or a layout packs. */
+function showLoading(text: string) {
+  $('packingText').textContent = text;
+  $('empty').hidden = true;
+  $('packing').hidden = false;
+}
+
 async function openFile(file: File) {
   setStatus(`Reading ${file.name}…`, true);
+  if (state.tab === 'sheets') showLoading(`Reading ${file.name}…`);
   // A file that fails to open must leave the previous one working.
   const prev = { text: dxfText, name: state.fileName };
   try {
@@ -117,6 +125,8 @@ async function openFile(file: File) {
     dxfText = prev.text;
     state.fileName = prev.name;
     showError(`Couldn't open ${file.name}. ${(err as Error).message}`);
+    $('packing').hidden = true;
+    $('empty').hidden = !!state.parts.length;
     updateRepack();
     if (!state.parts.length) setStatus('');
   }
@@ -265,7 +275,8 @@ function repack() {
   const n = groups.reduce((a, g) => a + g.items.length, 0);
   state.busy = true;
   $('staleBar').hidden = true;
-  $('packing').hidden = !!state.shown || state.tab !== 'sheets';
+  if (!state.shown && state.tab === 'sheets') showLoading(`Packing ${n} parts…`);
+  else $('packing').hidden = true;
   setStatus(`Packing ${n} parts…`, true);
   worker.onmessage = (e: MessageEvent<{ id: number; results: NestResult[][] }>) => {
     if (e.data.id !== id) return;
