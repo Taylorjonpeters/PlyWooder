@@ -193,7 +193,7 @@ export class CamWorkspace {
     const times = job.files.map((f) => estimateSeconds(f.moves, cfg.machine, centre));
     const total = times.reduce((a, b) => a + b, 0);
     this.$('camSummary').innerHTML = job.files.length
-      ? `<b>${job.files.length}</b> file${job.files.length > 1 ? 's' : ''} · est. run time <b>${fmtRun(total)}</b> · stock ${num(job.stock)} mm, cut to Z−${num(job.cutDepth)}${cfg.airCut > 0 ? ' · <b class="air">air cut</b>' : ''}`
+      ? `<b>${job.files.length}</b> file${job.files.length > 1 ? 's' : ''} · est. run time <b>${fmtRun(total)}</b> · stock ${num(job.stock)} mm, cut to Z−${num(job.cutDepth)} mm${cfg.airCut > 0 ? ' · <b class="air">air cut</b>' : ''}`
       : 'Nothing to cut on this sheet.';
     const warn = this.$('camWarn');
     warn.hidden = !job.warnings.length;
@@ -291,7 +291,7 @@ export class CamWorkspace {
     }
     this.$('camReadout').textContent = full
       ? `${this.timeline.length} moves · ${fmtTime(total)}`
-      : `File ${cur.file + 1} · ${OP_NAME[cur.m.op]} · Z ${num(cur.m.z)} · ${fmtTime(cur.t)} / ${fmtTime(total)}`;
+      : `File ${cur.file + 1} · ${OP_NAME[cur.m.op]} · Z ${num(cur.m.z)} mm · ${fmtTime(cur.t)} / ${fmtTime(total)}`;
   }
 
   private togglePlay() {

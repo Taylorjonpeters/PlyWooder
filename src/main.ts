@@ -302,8 +302,23 @@ function saveSettings() {
 
 const lenInputs = ['sheetW', 'sheetH', 'edgeMargin', 'kerf', 'errorGap', 'importThickness'] as const;
 
+/** Put the current unit after each length field's label, e.g. "Length (mm)". */
+const unitFields = ['sheetW', 'sheetH', 'edgeMargin', 'kerf', 'errorGap', 'importThickness', 'cncW', 'cncH'];
+function labelUnits() {
+  const u = state.settings.units === 'mm' ? 'mm' : 'in';
+  for (const id of unitFields) {
+    const input = $<HTMLInputElement>(id);
+    const text = [...input.parentElement!.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
+    if (!text) continue;
+    const el = input.parentElement!;
+    el.dataset.base ??= text.textContent!.trim();
+    text.textContent = `${el.dataset.base} (${u}) `;
+  }
+}
+
 function syncControls() {
   const s = state.settings;
+  labelUnits();
   for (const k of lenInputs) {
     const el = $<HTMLInputElement>(k);
     if (document.activeElement !== el) el.value = String(toUnits(s[k], s.units));
