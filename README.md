@@ -63,3 +63,5 @@ MIT. See [LICENSE](LICENSE).
 
 PlyWooder uses [three.js](https://threejs.org) (MIT), [Clipper](https://sourceforge.net/projects/jsclipper/) (Boost Software License), and [occt-import-js](https://github.com/kovacsv/occt-import-js). occt-import-js is a WebAssembly build of [Open CASCADE](https://dev.opencascade.org) (LGPL-2.1) and ships as its own separate `.wasm` file. Files open in your browser and are never uploaded.
 
+GORDIX support follows [GORDIX Studio](https://github.com/pfsin555/Gordix-studio) (MIT). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). PlyWooder is not affiliated with GORDIX or cubiio.
+
