@@ -45,7 +45,6 @@
             </div>
             <p class="hint" id="dxfHint"></p>
           </div>
-          <button class="primary repack" id="repack" hidden>Repack</button>
         </section>
 
         <!-- The sidebar follows the tab: layout settings for Sheets and 3D, CAM settings for G-code. -->
@@ -166,6 +165,13 @@
           <button data-tab="gcode" data-flow="cnc">G-code</button>
           <span class="status" id="status"></span>
         </nav>
+        <!-- Messages that apply to every tab: out-of-date layout now, file errors later. -->
+        <div class="notices" id="notices">
+          <div class="notice stale" id="staleBar" role="status" hidden>
+            <span><b>Settings changed.</b> The layout below is out of date.</span>
+            <button class="primary" id="repack" type="button">Repack</button>
+          </div>
+        </div>
         <div class="pane" id="sheetsPane">
           <div class="empty" id="empty">
             <h2>Open a STEP or DXF file to get started</h2>

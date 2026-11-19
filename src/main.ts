@@ -197,16 +197,32 @@ function settingsChanged() {
   updateRepack();
 }
 
+/** True when the layout on screen was packed with different settings from the ones in the sidebar. */
+function isStale() {
+  return !!state.parts.length && !state.cache.has(packKey(nestSettings()));
+}
+
+/**
+ * Keep the screen honest about an out-of-date layout: a banner with a Repack button, the sheets
+ * dimmed, and every export and G-code action off until the layout is packed again.
+ */
 function updateRepack() {
-  const stale = !!state.parts.length && !state.cache.has(packKey(nestSettings()));
-  $('repack').hidden = !stale || state.busy;
+  const stale = isStale();
+  $('staleBar').hidden = !stale || state.busy;
+  applyStale(stale);
   if (state.busy) return;
-  if (stale) setStatus('Settings changed — repack to update the layout');
+  if (stale) setStatus('Layout out of date');
   else if (state.shown) {
     const n = state.shown.groups.reduce((a, g) => a + g.items.length, 0);
     const sheets = state.shown.groups.reduce((a, g) => a + (g.result?.sheets.length ?? 0), 0);
     setStatus(n ? `${n} parts on ${sheets} sheet${sheets === 1 ? '' : 's'}` : 'No parts selected');
   }
+}
+
+function applyStale(stale: boolean) {
+  $('sheets').classList.toggle('stale', stale);
+  const actions = document.querySelectorAll<HTMLButtonElement>('#exportAll, #openGcode, #sheets .actions button');
+  for (const b of actions) b.disabled = stale;
 }
 
 /** Pack the parts with the current settings and show the result. */
@@ -225,7 +241,7 @@ function repack() {
   const id = ++jobId;
   const n = groups.reduce((a, g) => a + g.items.length, 0);
   state.busy = true;
-  $('repack').hidden = true;
+  $('staleBar').hidden = true;
   setStatus(`Packing ${n} parts…`, true);
   worker.onmessage = (e: MessageEvent<{ id: number; results: NestResult[][] }>) => {
     if (e.data.id !== id) return;
@@ -613,6 +629,7 @@ function render() {
     });
     host.appendChild(sec);
   });
+  applyStale(isStale());
   if (state.tab === 'gcode') cam.render();
   update3d();
 }
@@ -747,6 +764,7 @@ function camSheets(): (CamSheetRef & { gi: number; si: number })[] {
 
 const cam = new CamWorkspace({
   sheets: camSheets,
+  stale: isStale,
   settings: () => state.settings.cam,
   // Machine, table and outline bit also set the CNC layout, so a change there may need a repack.
   // Only a change to the packing settings touches the layout; other edits just save, so typing in

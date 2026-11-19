@@ -11,6 +11,8 @@ export type CamSheetRef = { label: string; sheet: CamSheet; fileBase: string };
 
 export type CamHost = {
   sheets: () => CamSheetRef[];
+  /** The layout on screen is out of date, so nothing should be downloaded from it. */
+  stale: () => boolean;
   settings: () => CamSettings;
   save: () => void;
   /** Lay the sheets out on the selected table's work area, and re-pack. */
@@ -141,10 +143,12 @@ export class CamWorkspace {
         <button class="ghost" data-dl="${i}">Download</button>
       </div>`;
     }).join('');
+    const stale = this.host.stale();
     for (const b of host.querySelectorAll<HTMLButtonElement>('[data-dl]')) {
+      b.disabled = stale;
       b.addEventListener('click', () => { const i = Number(b.dataset.dl); this.host.download(this.fileName(ref, i), this.text(ref, i)); });
     }
-    (this.$('camDownloadAll') as HTMLButtonElement).disabled = !job.files.length;
+    (this.$('camDownloadAll') as HTMLButtonElement).disabled = !job.files.length || stale;
   }
 
   private downloadAll() {
