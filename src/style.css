@@ -115,6 +115,8 @@ input:focus-visible, select:focus-visible, .seg button:focus-visible { outline-o
 .app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
 .side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: var(--sp-4) var(--sp-4) 0; }
 #layoutSettings, #camSettings { padding-bottom: var(--sp-5); }
+.brand { display: flex; align-items: center; gap: var(--sp-3); }
+.brand .mascot { width: 56px; height: 56px; flex: none; }
 .brand h1 { margin: 0; font-size: var(--fs-xl); letter-spacing: -0.02em; }
 .brand p { margin: 2px 0 0; color: var(--muted); }
 
