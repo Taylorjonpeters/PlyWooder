@@ -1,5 +1,5 @@
 import {
-  planSheet, gordixFit, currentTable, parseTableCfg, stockKey, DEFAULT_TOOLS, STUDIO_TABLES,
+  planSheet, gordixFit, currentTable, parseTableCfg, stockKey, DEFAULT_TOOLS, STUDIO_TABLES, MACHINE_LABELS,
   type CamJob, type CamSettings, type CamSheet, type Move, type OpKind, type Tool,
 } from './cam';
 import { writeGcode, estimateSeconds, cutLength, MACHINES } from './gcode';
@@ -15,6 +15,8 @@ export type CamHost = {
   stale: () => boolean;
   settings: () => CamSettings;
   save: () => void;
+  /** The layout's sheet already is the selected table's work area. */
+  usingWorkArea: () => boolean;
   /** Lay the sheets out on the selected table's work area, and re-pack. */
   useWorkArea: () => void;
   download: (name: string, text: string) => void;
@@ -276,15 +278,15 @@ export class CamWorkspace {
     this.$('camSettings').innerHTML = `
       <section>
         <h2>Machine</h2>
-        <label>Machine<select data-k="machine">
-          <option value="gordix" ${gordix ? 'selected' : ''}>GORDIX (GORDIX Studio dialect)</option>
-          <option value="grbl" ${!gordix ? 'selected' : ''}>Generic GRBL</option>
+        <label>${lt('Machine', gordix ? 'Writes G-code in the dialect GORDIX Studio writes.' : 'Writes standard GRBL G-code.')}<select data-k="machine">
+          <option value="gordix" ${gordix ? 'selected' : ''}>${MACHINE_LABELS.gordix}</option>
+          <option value="grbl" ${!gordix ? 'selected' : ''}>${MACHINE_LABELS.grbl}</option>
         </select></label>
         <label>Origin (X0 Y0)<select data-k="origin">
           <option value="center" ${c.origin === 'center' ? 'selected' : ''}>Centre of the sheet</option>
           <option value="corner" ${c.origin === 'corner' ? 'selected' : ''}>Lower-left corner</option>
         </select></label>
-        ${gordix ? `<label>${lt('Table (mm)', `${c.tablesFile ? `From ${c.tablesFile}` : "GORDIX Studio's default tables"}. Table ${table.id}: S ${num(table.S)}, W ${num(table.W)}, E ${num(table.E)}, N ${num(table.N)}, diagonal ${num(table.D)} mm. Also sets the layout's sheet.`)}<select data-k="tableId" data-num="1">${tables.map((t) => {
+        ${gordix ? `<label>${lt('GORDIX table', `${c.tablesFile ? `From ${c.tablesFile}` : "GORDIX Studio's default tables"}. Table ${table.id}: S ${num(table.S)}, W ${num(table.W)}, E ${num(table.E)}, N ${num(table.N)}, diagonal ${num(table.D)} mm. Also sets the layout's sheet.`)}<select data-k="tableId" data-num="1">${tables.map((t) => {
             const f = gordixFit(t);
             return `<option value="${t.id}" ${t.id === table.id ? 'selected' : ''}>${t.id}: ${num(t.S)} × ${num(t.W)} → cuts ${f.x * 2} × ${f.y * 2}</option>`;
           }).join('')}</select></label>
@@ -294,7 +296,9 @@ export class CamWorkspace {
             <button class="ghost" id="camResetTables" type="button" ${c.tablesFile ? '' : 'disabled'}>Studio defaults</button>
           </div>
           <input type="file" id="camTableFile" accept=".cfg,.txt,text/plain" hidden />
-          <button class="ghost wide" id="camWorkArea" type="button" data-tip="The GORDIX reaches less than its table">Use work area as sheet (${fit.x * 2} × ${fit.y * 2} mm)</button>`
+          ${this.host.usingWorkArea()
+            ? `<p class="hint">The sheet is this table's work area (${fit.x * 2} × ${fit.y * 2} mm).</p>`
+            : `<button class="ghost wide" id="camWorkArea" type="button" data-tip="The GORDIX reaches less than its table">Use work area as sheet (${fit.x * 2} × ${fit.y * 2} mm)</button>`}`
         : numIn('rpm', 'Spindle RPM', 0, '100', '0 leaves the spindle command out.')}
       </section>
 

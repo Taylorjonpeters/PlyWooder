@@ -34,7 +34,7 @@
           <div class="dxfOpts" id="dxfOpts" hidden>
             <div class="row2">
               <label>Thickness <input type="number" id="importThickness" step="any" min="0.1" /></label>
-              <label>Drawing units
+              <label>Units in this drawing
                 <select id="importUnits">
                   <option value="auto">From file</option>
                   <option value="mm">mm</option>
@@ -59,10 +59,7 @@
 
         <section id="cncSection" data-flow="cnc">
           <h2>Machine and sheet</h2>
-          <label>Machine <select id="cncMachine">
-            <option value="gordix">GORDIX</option>
-            <option value="grbl">Other CNC (GRBL or DXF to CAM)</option>
-          </select></label>
+          <label>Machine <select id="cncMachine"><!-- filled from MACHINE_LABELS in main.ts --></select></label>
           <label id="cncTableRow">GORDIX table <select id="cncTable"></select></label>
           <label>Sheet <select id="cncSheet">
             <option value="table">The table's work area</option>
@@ -137,23 +134,30 @@
           <label data-flow="saw">Blade width (kerf) <input type="number" id="kerf" step="any" min="0" /></label>
           <label class="check"><input type="checkbox" id="shareCuts" /> Share cuts between parts <span class="tip" tabindex="0" role="img" aria-label="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges." data-tip="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges.">i</span></label>
           <label id="errorGapRow">Extra gap between parts <input type="number" id="errorGap" step="any" min="0" /></label>
+          <p class="hint" id="errorGapHint" hidden>Not used while Share cuts is on: neighbours sit exactly one bit or blade width apart.</p>
         </section>
 
         <section>
           <h2>Display</h2>
           <label class="check" data-flow="saw"><input type="checkbox" id="showThrough" /> Show through cuts</label>
           <label class="check" data-flow="cnc"><input type="checkbox" id="showCuts" /> Show CNC cut paths</label>
-          <div class="seg" id="units">
-            <button data-v="mm">mm</button>
-            <button data-v="in">inches</button>
+          <div class="field">
+            <span class="fieldLabel">Show lengths in</span>
+            <div class="seg" id="units">
+              <button data-v="mm">mm</button>
+              <button data-v="in">inches</button>
+            </div>
           </div>
         </section>
 
         <section id="exportSection" hidden>
           <h2>Export</h2>
-          <div class="seg" id="dxfUnits">
-            <button data-v="mm">DXF in mm</button>
-            <button data-v="in">DXF in inches</button>
+          <div class="field">
+            <span class="fieldLabel">DXF file units</span>
+            <div class="seg" id="dxfUnits">
+              <button data-v="mm">mm</button>
+              <button data-v="in">inches</button>
+            </div>
           </div>
           <p class="hint" data-flow="cnc">Layers for any CAM program <span class="tip" tabindex="0" role="img" aria-label="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET." data-tip="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET.">i</span></p>
         </section>

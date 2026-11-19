@@ -8,7 +8,7 @@ import { throughCuts, type ThroughCut, type ThroughPlan } from './through';
 import type { NestRequest, SuggestJob } from './nest.worker';
 import type { SuggestResult } from './suggest';
 import { toDxf, toSvg, type DxfSheet } from './dxf';
-import { CAM_DEFAULTS, DEFAULT_TOOLS, STUDIO_TABLES, currentTable, gordixFit, type CamSettings } from './cam';
+import { CAM_DEFAULTS, DEFAULT_TOOLS, MACHINE_LABELS, STUDIO_TABLES, currentTable, gordixFit, type CamSettings } from './cam';
 import { CamWorkspace, type CamSheetRef } from './camView';
 import { initTips } from './tip';
 import { setPlayState } from './icons';
@@ -18,7 +18,10 @@ import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
 
 type Settings = NestSettings & {
-  units: Units; dxfUnits: Units; preset: string; showCuts: boolean; showThrough: boolean;
+  units: Units; dxfUnits: Units;
+  /** DXF units follow the display units until the user picks them. */
+  dxfUnitsExplicit: boolean;
+  preset: string; showCuts: boolean; showThrough: boolean;
   /** DXF import: drawings are flat, so the stock thickness comes from here. */
   importThickness: number; importUnits: DxfUnits;
   /** How the sheets will be cut; null until chosen, which shows the chooser. */
@@ -37,7 +40,7 @@ const DEFAULTS: Settings = {
   sheetW: 2438.4, sheetH: 1219.2, preset: '2438.4x1219.2',
   edgeMargin: 12.7, kerf: 6.35, errorGap: 3.2, shareCuts: true,
   mode: 'easy', shape: 'true', rotation: 'free90', effort: 'normal',
-  units: 'mm', dxfUnits: 'mm', showCuts: false, showThrough: true, importThickness: 18, importUnits: 'auto',
+  units: 'mm', dxfUnits: 'mm', dxfUnitsExplicit: false, showCuts: false, showThrough: true, importThickness: 18, importUnits: 'auto',
   workflow: null,
   cnc: { sheet: 'table', sheetW: 2438.4, sheetH: 1219.2, stock: '2438.4x1219.2' },
   cam: CAM_DEFAULTS,
@@ -61,7 +64,10 @@ function camSettings(saved?: Partial<CamSettings>): CamSettings {
 function loadSettings(): Settings {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) ?? '{}');
-    return { ...DEFAULTS, ...saved, cnc: { ...DEFAULTS.cnc, ...saved.cnc }, cam: camSettings(saved.cam) };
+    const merged = { ...DEFAULTS, ...saved, cnc: { ...DEFAULTS.cnc, ...saved.cnc }, cam: camSettings(saved.cam) };
+    // Settings saved before DXF units followed the display units: a differing choice was deliberate.
+    if (saved.dxfUnitsExplicit === undefined && saved.dxfUnits && saved.dxfUnits !== saved.units) merged.dxfUnitsExplicit = true;
+    return merged;
   } catch { return { ...DEFAULTS, cnc: { ...DEFAULTS.cnc }, cam: camSettings() }; }
 }
 
@@ -100,7 +106,7 @@ async function openFile(file: File) {
       const [occt, buf] = await Promise.all([getOcct(), file.arrayBuffer()]);
       dxfText = null;
       state.fileName = file.name;
-      loadParts(partsFromStep(occt, new Uint8Array(buf)), 'solids');
+      loadParts(partsFromStep(occt, new Uint8Array(buf)));
     }
   } catch (err) {
     console.error(err);
@@ -119,16 +125,16 @@ function loadDxf() {
   ];
   $('dxfHint').textContent = notes.filter(Boolean).join(' ');
   if (!r.parts.length) throw new Error('no closed outlines found');
-  loadParts(r.parts, 'outlines');
+  loadParts(r.parts);
 }
 
-function loadParts(parts: Part[], noun: string) {
+function loadParts(parts: Part[]) {
   state.parts = parts;
   state.choices = new Map(parts.map((p) => [p.id, { include: p.isPanel, qty: 1 }]));
   state.cache.clear();
   state.shown = null;
   $('fileName').textContent = state.fileName;
-  $('fileHint').textContent = `${parts.length} ${noun} · click to open another`;
+  $('fileHint').textContent = `${parts.length} ${parts.length === 1 ? 'part' : 'parts'} · click to open another`;
   $('dxfOpts').hidden = dxfText === null;
   syncControls();
   renderParts();
@@ -297,6 +303,7 @@ function syncControls() {
   $<HTMLInputElement>('showCuts').checked = s.showCuts;
   $<HTMLInputElement>('showThrough').checked = s.showThrough;
   $<HTMLInputElement>('errorGap').disabled = s.shareCuts;
+  $('errorGapHint').hidden = !s.shareCuts;
   syncWorkflow();
 }
 
@@ -343,8 +350,11 @@ function bindControls() {
   bindCnc();
   // Packing with hulls keeps parts out of each other's notches, so a shape change re-nests.
   seg('shape', () => settingsChanged());
-  seg('units', () => { renderParts(); render(); saveSettings(); });
-  seg('dxfUnits', saveSettings);
+  seg('units', () => {
+    if (!s.dxfUnitsExplicit) s.dxfUnits = s.units;
+    syncControls(); renderParts(); render(); saveSettings();
+  });
+  seg('dxfUnits', () => { s.dxfUnitsExplicit = true; saveSettings(); });
   $<HTMLInputElement>('shareCuts').addEventListener('change', (e) => { s.shareCuts = (e.target as HTMLInputElement).checked; syncControls(); settingsChanged(); });
   $<HTMLInputElement>('showThrough').addEventListener('change', (e) => { s.showThrough = (e.target as HTMLInputElement).checked; saveSettings(); render(); });
   $<HTMLInputElement>('showCuts').addEventListener('change', (e) => { s.showCuts = (e.target as HTMLInputElement).checked; saveSettings(); render(); });
@@ -786,6 +796,7 @@ function camSheets(): (CamSheetRef & { gi: number; si: number })[] {
 const cam = new CamWorkspace({
   sheets: camSheets,
   stale: isStale,
+  usingWorkArea: () => state.settings.cam.machine === 'gordix' && state.settings.cnc.sheet === 'table',
   settings: () => state.settings.cam,
   // Machine, table and outline bit also set the CNC layout, so a change there may need a repack.
   // Only a change to the packing settings touches the layout; other edits just save, so typing in
@@ -854,6 +865,7 @@ function download(name: string, text: string, type: string) {
 const baseName = () => state.fileName.replace(/\.(step|stp|dxf)$/i, '') || 'layout';
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+$('cncMachine').innerHTML = Object.entries(MACHINE_LABELS).map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
 initTips();
 bindControls();
 syncControls();
