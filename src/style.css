@@ -192,8 +192,8 @@ details.collapse > .parts { margin-top: var(--sp-2); }
    Main area: tabs, panes, empty states
    --------------------------------------------------------------------------- */
 .main { display: grid; grid-template-rows: auto auto 1fr; min-width: 0; min-height: 0; }
-.tabs { display: flex; align-items: center; gap: var(--sp-1); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line); background: var(--panel); }
-.tabs button[data-tab] { min-height: var(--control-h); border: 0; background: none; padding: 0 var(--sp-3); border-radius: var(--r-ctl); cursor: pointer; color: var(--muted); font-size: var(--fs-md); }
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line); background: var(--panel); }
+.tabs button[data-tab] { min-height: var(--control-h); border: 0; background: none; padding: 0 var(--sp-3); border-radius: var(--r-ctl); cursor: pointer; color: var(--muted); font-size: var(--fs-md); white-space: nowrap; }
 .tabs button[data-tab].on { background: var(--bg); color: var(--ink); font-weight: 600; }
 .status { margin-left: auto; color: var(--muted); font-size: var(--fs-sm); }
 .status.busy::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: var(--sp-2); border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; }
@@ -234,8 +234,10 @@ details.collapse > .parts { margin-top: var(--sp-2); }
 }
 /* Notices that sit under the tabs, on every tab. */
 .notices .notice { margin: var(--sp-3) var(--sp-4) 0; }
-.notice.stale { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); background: var(--info-bg); border-left: 3px solid var(--accent); }
+.notices .notice { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.notice.stale { background: var(--info-bg); border-left: 3px solid var(--accent); }
 .notice .primary { min-height: var(--control-h-sm); }
+.notice .ghost { min-height: var(--control-h-sm); width: var(--control-h-sm); padding: 0; flex: none; }
 /* A layout that no longer matches the settings: shown, but dimmed and not exportable. */
 #sheets.stale { opacity: 0.45; transition: opacity 0.15s; }
 
@@ -285,10 +287,19 @@ details.steps li { white-space: pre-wrap; }
 }
 .dropOverlay.on { display: grid; }
 
+/* Phone: file, then results, then settings, with the main actions in a bar along the bottom. */
 @media (max-width: 760px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
-  .side { border-right: 0; border-bottom: 1px solid var(--line); padding: var(--sp-4); }
-  .main { min-height: 80vh; }
+  .app { display: flex; flex-direction: column; height: auto; min-height: 100vh; padding-bottom: 72px; }
+  .side { display: contents; }
+  .brand, #fileSection { order: 0; padding: 0 var(--sp-4); background: var(--panel); }
+  .brand { padding-top: var(--sp-4); }
+  #fileSection { margin-top: 0; padding-bottom: var(--sp-4); border-bottom: 1px solid var(--line); }
+  .main { order: 1; min-height: 80vh; }
+  #layoutSettings, #camSettings { order: 2; padding: var(--sp-4); background: var(--panel); border-top: 1px solid var(--line); }
+  .sideActions {
+    position: fixed; left: 0; right: 0; bottom: 0; margin: 0; z-index: 5;
+    grid-auto-flow: column; grid-auto-columns: 1fr;
+  }
   #sheetsPane { padding: var(--sp-4); }
   #viewPane { min-height: 70vh; }
 }
@@ -353,9 +364,10 @@ i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: no
    --------------------------------------------------------------------------- */
 #workflow { margin-bottom: 10px; }
 .chooser { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: var(--sp-4); background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(3px); }
-.chooserBox { padding: var(--sp-5); width: min(640px, 100%); box-shadow: 0 20px 50px rgb(0 0 0 / 0.25); }
-.chooserBox h2 { margin: 0 0 6px; font-size: var(--fs-xl); }
-.chooserBox > p { margin: 0 0 var(--sp-4); color: var(--muted); }
+.chooserBox { position: relative; padding: var(--sp-5); width: min(640px, 100%); box-shadow: 0 20px 50px rgb(0 0 0 / 0.25); }
+.chooserClose { position: absolute; top: var(--sp-2); right: var(--sp-2); width: var(--control-h-sm); min-height: var(--control-h-sm); padding: 0; border-color: transparent; background: none; color: var(--muted); }
+.chooserClose:hover { color: var(--ink); }
+.chooserBox .chooserCards { margin-top: var(--sp-4); }
 .chooserCards { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
 .chooserCard { display: grid; gap: 6px; align-content: start; text-align: left; padding: var(--sp-4); border: 1px solid var(--field-line); border-radius: var(--r-card); background: var(--bg); cursor: pointer; }
 .chooserCard:hover, .chooserCard:focus-visible { border-color: var(--accent); }

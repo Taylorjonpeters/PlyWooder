@@ -21,7 +21,7 @@
           <p>STEP in, cut sheets out.</p>
         </header>
 
-        <section>
+        <section id="fileSection">
           <div class="seg" id="workflow" role="group" aria-label="How you're cutting">
             <button data-v="saw">Saw</button>
             <button data-v="cnc">CNC router</button>
@@ -163,7 +163,7 @@
         </section>
         <!-- The two main actions stay on screen however far the settings are scrolled. -->
         <div class="sideActions" id="sideActions" hidden>
-          <button class="primary" id="exportAll" type="button">Download all sheets (.dxf)</button>
+          <button class="primary" id="exportAll" type="button">Download all (.dxf)</button>
           <button class="primary" id="openGcode" type="button" data-flow="cnc">Make G-code <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
         </div>
         </div>
@@ -183,12 +183,17 @@
             <span><b>Settings changed.</b> The layout below is out of date.</span>
             <button class="primary" id="repack" type="button">Repack</button>
           </div>
+          <div class="notice warn" id="errorBar" role="alert" hidden>
+            <span id="errorText"></span>
+            <button class="ghost" id="errorClose" type="button" aria-label="Dismiss"><svg class="ico" aria-hidden="true"><use href="#i-close" /></svg></button>
+          </div>
         </div>
         <div class="pane" id="sheetsPane">
           <div class="empty" id="empty">
             <h2>Open a STEP or DXF file to get started</h2>
             <p>Each solid or closed outline becomes a part.</p>
           </div>
+          <div class="empty" id="packing" hidden><h2>Packing your parts…</h2></div>
           <div class="notice info" id="skippedNote" hidden></div>
           <div id="sheets"></div>
         </div>
@@ -230,18 +235,18 @@
         </div>
       </main>
     </div>
+    <!-- First visit: two buttons are the whole question. Outside click, Escape or the close button skips it. -->
     <div class="chooser" id="chooser" hidden>
-      <div class="chooserBox" role="dialog" aria-modal="true" aria-labelledby="chooserTitle">
-        <h2 id="chooserTitle">How are you cutting?</h2>
-        <p>You can switch later at the top of the sidebar.</p>
+      <div class="chooserBox" role="dialog" aria-modal="true" aria-label="Choose how you're cutting">
+        <button class="ghost chooserClose" id="chooserClose" type="button" aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-close" /></svg></button>
         <div class="chooserCards">
           <button class="chooserCard" data-flow-pick="saw">
             <b>Table saw or track saw</b>
-            <span>Strips and rows, every cut edge to edge, with a numbered cut order.</span>
+            <span>Straight cuts from edge to edge, in a numbered order.</span>
           </button>
           <button class="chooserCard" data-flow-pick="cnc">
             <b>CNC router</b>
-            <span>Tight true-shape nesting, sized to your machine and bit, with G-code for GORDIX or GRBL.</span>
+            <span>Tight nesting for your machine and bit, plus G-code.</span>
           </button>
         </div>
       </div>

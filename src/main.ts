@@ -24,7 +24,7 @@ type Settings = NestSettings & {
   preset: string; showCuts: boolean; showThrough: boolean;
   /** DXF import: drawings are flat, so the stock thickness comes from here. */
   importThickness: number; importUnits: DxfUnits;
-  /** How the sheets will be cut; null until chosen, which shows the chooser. */
+  /** How the sheets will be cut; null until chosen, which shows the chooser (Saw applies until then). */
   workflow: Workflow | null;
   /**
    * The CNC sheet: the GORDIX table's work area, or a custom size (mm). In CNC mode the sheet and
@@ -97,6 +97,8 @@ let dxfText: string | null = null;
 
 async function openFile(file: File) {
   setStatus(`Reading ${file.name}…`, true);
+  // A file that fails to open must leave the previous one working.
+  const prev = { text: dxfText, name: state.fileName };
   try {
     if (/\.dxf$/i.test(file.name)) {
       dxfText = await file.text();
@@ -110,9 +112,20 @@ async function openFile(file: File) {
     }
   } catch (err) {
     console.error(err);
-    setStatus(`Couldn't read that file: ${(err as Error).message}`);
+    dxfText = prev.text;
+    state.fileName = prev.name;
+    showError(`Couldn't open ${file.name}. ${(err as Error).message}`);
+    updateRepack();
+    if (!state.parts.length) setStatus('');
   }
 }
+
+/** A message under the tabs, visible on every tab, until the next file opens or it is dismissed. */
+function showError(text: string) {
+  $('errorText').textContent = text;
+  $('errorBar').hidden = false;
+}
+const clearError = () => { $('errorBar').hidden = true; };
 
 function loadDxf() {
   if (dxfText === null) return;
@@ -124,7 +137,7 @@ function loadDxf() {
     r.openShapes ? `${r.openShapes} open shape${r.openShapes > 1 ? 's' : ''} didn't close and ${r.openShapes > 1 ? 'were' : 'was'} left out.` : '',
   ];
   $('dxfHint').textContent = notes.filter(Boolean).join(' ');
-  if (!r.parts.length) throw new Error('no closed outlines found');
+  if (!r.parts.length) throw new Error('No closed outlines found. Each part must be a closed shape; lines that never join up are left out.');
   loadParts(r.parts);
 }
 
@@ -139,9 +152,11 @@ function loadParts(parts: Part[]) {
   syncControls();
   renderParts();
   $('empty').hidden = true;
+  clearError();
   state.autoplayPending = true;
   view3d.setScene(parts, [], []);
-  showTab('3d');
+  has3dSheets = false; // the new scene has no sheets until it is packed
+  showTab('sheets');
   repack();
 }
 
@@ -248,6 +263,7 @@ function repack() {
   const n = groups.reduce((a, g) => a + g.items.length, 0);
   state.busy = true;
   $('staleBar').hidden = true;
+  $('packing').hidden = !!state.shown || state.tab !== 'sheets';
   setStatus(`Packing ${n} parts…`, true);
   worker.onmessage = (e: MessageEvent<{ id: number; results: NestResult[][] }>) => {
     if (e.data.id !== id) return;
@@ -297,7 +313,7 @@ function syncControls() {
   $<HTMLSelectElement>('importUnits').value = s.importUnits;
   $<HTMLSelectElement>('effort').value = s.effort;
   for (const seg of ['workflow', 'shape', 'units', 'dxfUnits'] as const) {
-    for (const b of $(seg).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === s[seg]);
+    for (const b of $(seg).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === (seg === 'workflow' ? s.workflow ?? 'saw' : s[seg]));
   }
   $<HTMLInputElement>('shareCuts').checked = s.shareCuts;
   $<HTMLInputElement>('showCuts').checked = s.showCuts;
@@ -347,6 +363,9 @@ function bindControls() {
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-flow-pick]')) {
     b.addEventListener('click', () => setWorkflow(b.dataset.flowPick as Workflow));
   }
+  $('chooserClose').addEventListener('click', skipChooser);
+  $('chooser').addEventListener('click', (e) => { if (e.target === $('chooser')) skipChooser(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('chooser').hidden) skipChooser(); });
   bindCnc();
   // Packing with hulls keeps parts out of each other's notches, so a shape change re-nests.
   seg('shape', () => settingsChanged());
@@ -380,6 +399,7 @@ function bindControls() {
     b.addEventListener('click', () => showTab(b.dataset.tab as Tab));
   }
   $('repack').addEventListener('click', repack);
+  $('errorClose').addEventListener('click', clearError);
   $('openGcode').addEventListener('click', () => showTab('gcode'));
   $('exportAll').addEventListener('click', () => {
     const all = shownGroups().flatMap((g, gi) => (g.result?.sheets ?? []).map((_, si) => dxfSheet(gi, si)));
@@ -401,6 +421,13 @@ function bindControls() {
 // Saw or CNC
 // ---------------------------------------------------------------------------
 
+/** The first-run question was closed without an answer: stay on Saw, and ask again next visit. */
+let chooserSkipped = false;
+function skipChooser() {
+  chooserSkipped = true;
+  $('chooser').hidden = true;
+}
+
 /** Switch between saw and CNC: the sidebar, tabs and packing all follow. */
 function setWorkflow(w: Workflow) {
   const s = state.settings;
@@ -417,7 +444,7 @@ function setWorkflow(w: Workflow) {
 function syncWorkflow() {
   const s = state.settings;
   const cnc = isCnc();
-  $('chooser').hidden = s.workflow !== null;
+  $('chooser').hidden = s.workflow !== null || chooserSkipped;
   for (const el of document.querySelectorAll<HTMLElement>('[data-flow]')) el.hidden = el.dataset.flow !== (cnc ? 'cnc' : 'saw');
   if (!cnc) return;
   const c = s.cam;
@@ -532,7 +559,7 @@ function reloadDxf() {
   saveSettings();
   clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => {
-    try { loadDxf(); } catch (err) { setStatus(`Couldn't read that file: ${(err as Error).message}`); }
+    try { loadDxf(); } catch (err) { showError((err as Error).message); }
   }, 400);
 }
 
@@ -546,6 +573,7 @@ function showTab(tab: Tab) {
   $('layoutSettings').hidden = tab === 'gcode';
   $('camSettings').hidden = tab !== 'gcode';
   if (tab === 'gcode') cam.render();
+  autoplay3d();
 }
 
 function renderParts() {
@@ -595,6 +623,7 @@ function highlight(partId: number, on: boolean) {
 
 function render() {
   const s = view();
+  $('packing').hidden = true;
   // What the shown layout was packed for, which can lag the workflow until it re-packs.
   const cncView = s.mode === 'optimal';
   $('empty').hidden = !!state.parts.length;
@@ -845,11 +874,19 @@ function update3d() {
     });
   });
   view3d.setScene(state.parts, placements, sheets);
-  if (state.autoplayPending && sheets.length) {
-    state.autoplayPending = false;
-    view3d.setProgress(0);
-    setTimeout(() => { view3d.play(); setPlayState($('play'), true); }, 600);
-  }
+  has3dSheets = sheets.length > 0;
+  autoplay3d();
+}
+
+/** Whether the 3D scene has sheets to fly the parts onto. */
+let has3dSheets = false;
+
+/** After a file opens, play the parts-onto-sheets animation the first time the 3D tab is in view. */
+function autoplay3d() {
+  if (!state.autoplayPending || !has3dSheets || state.tab !== '3d') return;
+  state.autoplayPending = false;
+  view3d.setProgress(0);
+  setTimeout(() => { view3d.play(); setPlayState($('play'), true); }, 600);
 }
 
 // ---------------------------------------------------------------------------
