@@ -1,6 +1,8 @@
 # PlyWooder
 
 **Try it: https://taylorjonpeters.github.io/PlyWooder/**
+Vibe-coded step file converter. So I can take my fusion files and pack them optimally into a sheet of plywood.
+Now including a gcode generator built to be compatible with the gordix cnc. 
 
 Open a STEP or DXF file and get plywood cut sheets. Each solid in the file becomes a part. PlyWooder lays the flat parts out on sheets, shows an animation of the model coming apart onto the sheets, and exports DXF files for a CNC.
 
