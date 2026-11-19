@@ -32,6 +32,13 @@ const fmtTime = (s: number) => {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.round(s % 60);
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 };
+/** Plain-words duration for the summary and file cards: "1 h 42 min", "6 min", "40 s". */
+const fmtRun = (s: number) => {
+  const mins = Math.round(s / 60);
+  if (mins < 1) return `${Math.max(1, Math.round(s))} s`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
+};
 const num = (v: number) => String(Math.round(v * 1000) / 1000);
 
 /**
@@ -186,7 +193,7 @@ export class CamWorkspace {
     const times = job.files.map((f) => estimateSeconds(f.moves, cfg.machine, centre));
     const total = times.reduce((a, b) => a + b, 0);
     this.$('camSummary').innerHTML = job.files.length
-      ? `<b>${job.files.length}</b> file${job.files.length > 1 ? 's' : ''} · about <b>${fmtTime(total)}</b> · stock ${num(job.stock)} mm, cut to Z−${num(job.cutDepth)}${cfg.airCut > 0 ? ' · <b class="air">air cut</b>' : ''}`
+      ? `<b>${job.files.length}</b> file${job.files.length > 1 ? 's' : ''} · est. run time <b>${fmtRun(total)}</b> · stock ${num(job.stock)} mm, cut to Z−${num(job.cutDepth)}${cfg.airCut > 0 ? ' · <b class="air">air cut</b>' : ''}`
       : 'Nothing to cut on this sheet.';
     const warn = this.$('camWarn');
     warn.hidden = !job.warnings.length;
@@ -196,7 +203,7 @@ export class CamWorkspace {
       const what = f.kind === 'laser' ? 'Laser module' : `${esc(f.tool!.name)} · ${num(f.tool!.diameter)} mm`;
       return `<div class="camFile">
         <span class="n">${i + 1}</span>
-        <div><b>${what}</b><small class="ops">${f.ops.map((o) => `<span><i class="op ${o}"></i>${OP_NAME[o]}</span>`).join('')}</small><small>${fmtTime(times[i])} · ${(cutLength(f.moves) / 1000).toFixed(1)} m of cutting</small></div>
+        <div><b>${what}</b><small class="ops">${f.ops.map((o) => `<span><i class="op ${o}"></i>${OP_NAME[o]}</span>`).join('')}</small><small>${fmtRun(times[i])} · ${(cutLength(f.moves) / 1000).toFixed(1)} m cut</small></div>
         <button class="ghost" data-dl="${i}">Download</button>
       </div>`;
     }).join('');
