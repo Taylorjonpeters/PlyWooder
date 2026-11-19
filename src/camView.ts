@@ -7,7 +7,11 @@ import { tip } from './tip';
 import { icon, setPlayState } from './icons';
 
 /** One sheet of the current layout, as the workspace sees it. */
-export type CamSheetRef = { label: string; sheet: CamSheet; fileBase: string };
+/**
+ * `label` is the full name (used in file headers); `name` and `group` are what the picker shows:
+ * "Sheet 2" under the heading "18 mm stock".
+ */
+export type CamSheetRef = { label: string; name: string; group: string; sheet: CamSheet; fileBase: string };
 
 export type CamHost = {
   sheets: () => CamSheetRef[];
@@ -47,7 +51,19 @@ export class CamWorkspace {
   private $ = (id: string) => document.getElementById(id)!;
 
   constructor(private host: CamHost) {
-    this.$('camSheet').addEventListener('change', (e) => { this.index = Number((e.target as HTMLSelectElement).value); this.plan(); });
+    const strip = this.$('camSheet');
+    strip.addEventListener('click', (e) => {
+      const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-sheet]');
+      if (chip) this.pick(Number(chip.dataset.sheet));
+    });
+    // Arrow keys move between sheets, as in any tab list.
+    strip.addEventListener('keydown', (e) => {
+      const n = this.host.sheets().length;
+      const to = { ArrowRight: this.index + 1, ArrowDown: this.index + 1, ArrowLeft: this.index - 1, ArrowUp: this.index - 1, Home: 0, End: n - 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      this.pick(Math.max(0, Math.min(n - 1, to)), true);
+    });
     this.$('camDownloadAll').addEventListener('click', () => this.downloadAll());
     this.$('camPlay').addEventListener('click', () => this.togglePlay());
     this.$('camScrub').addEventListener('input', (e) => { this.pause(); this.setStep(Number((e.target as HTMLInputElement).value)); });
@@ -68,10 +84,49 @@ export class CamWorkspace {
     this.renderSettings();
     if (!sheets.length) { this.job = null; return; }
     if (this.index >= sheets.length) this.index = 0;
-    const sel = this.$('camSheet') as HTMLSelectElement;
-    sel.innerHTML = sheets.map((s, i) => `<option value="${i}">${esc(s.label)}</option>`).join('');
-    sel.value = String(this.index);
+    this.renderSheetStrip(sheets);
     this.plan();
+  }
+
+  /** Show sheet `i` without redrawing the strip's thumbnails. */
+  private pick(i: number, focus = false) {
+    if (i === this.index) return;
+    this.index = i;
+    this.markSheet(focus);
+    this.plan();
+  }
+
+  /** One chip per sheet: a thumbnail of what is on it, its name and part count, grouped by stock. */
+  private renderSheetStrip(sheets: CamSheetRef[]) {
+    const groups = new Set(sheets.map((s) => s.group));
+    let html = '';
+    sheets.forEach((ref, i) => {
+      if (groups.size > 1 && ref.group !== sheets[i - 1]?.group) html += `<span class="stripGroup" role="presentation">${esc(ref.group)}</span>`;
+      const { w, h, shapes } = ref.sheet;
+      const d = (poly: { x: number; y: number }[]) => 'M' + poly.map((q) => `${q.x.toFixed(0)},${(h - q.y).toFixed(0)}`).join('L') + 'Z';
+      const path = shapes.map((sh) => sh.regions.map((r) => [r.outer, ...r.holes].map(d).join('')).join('')).join('');
+      const n = shapes.length;
+      html += `<button class="sheetChip" role="tab" type="button" data-sheet="${i}">
+        <svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><rect class="sheetRect" width="${w}" height="${h}"/><path class="mini" d="${path}"/></svg>
+        <b>${esc(ref.name)}</b><small>${n} ${n === 1 ? 'part' : 'parts'}${groups.size > 1 ? '' : ` · ${num(ref.sheet.thickness)} mm`}</small>
+      </button>`;
+    });
+    this.$('camSheet').innerHTML = html;
+    this.markSheet(false);
+  }
+
+  /** Mark the current sheet's chip (and make it the one that takes the Tab key). */
+  private markSheet(focus: boolean) {
+    for (const chip of this.$('camSheet').querySelectorAll<HTMLElement>('[data-sheet]')) {
+      const on = Number(chip.dataset.sheet) === this.index;
+      chip.classList.toggle('on', on);
+      chip.setAttribute('aria-selected', String(on));
+      chip.tabIndex = on ? 0 : -1;
+      if (on) {
+        chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        if (focus) chip.focus();
+      }
+    }
   }
 
   // -------------------------------------------------------------------------

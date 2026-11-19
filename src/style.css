@@ -134,8 +134,7 @@ label.check input { margin: 0; accent-color: var(--accent); }
   width: 100%; min-width: 0; min-height: var(--control-h); padding: 0 var(--sp-2);
   border: 1px solid var(--field-line); border-radius: var(--r-ctl); background: var(--field-bg);
 }
-.toolRow input, .part input[type='number'], .camBar select { min-height: var(--control-h-sm); padding: 0 6px; }
-.camBar select { width: auto; }
+.toolRow input, .part input[type='number'] { min-height: var(--control-h-sm); padding: 0 6px; }
 .part input[type='number'] { font-size: var(--fs-sm); }
 /* One disabled look: the control is greyed and its label is dimmed with it. */
 input:disabled, select:disabled { background: var(--bg); cursor: not-allowed; }
@@ -323,6 +322,17 @@ details.steps li { white-space: pre-wrap; }
 .camMain > * { flex: none; }
 .camMain > .camPreview { flex: 1 1 auto; min-height: 280px; }
 .camBar { display: flex; gap: var(--sp-3); align-items: center; flex-wrap: wrap; }
+/* Sheet picker: a row of chips, each a thumbnail of its sheet. It scrolls sideways when there are many. */
+.sheetStrip { flex: 1 1 100%; display: flex; align-items: flex-end; gap: var(--sp-2); overflow-x: auto; padding: 2px 2px var(--sp-2); scroll-snap-type: x proximity; }
+.stripGroup { flex: none; align-self: center; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding: 0 var(--sp-1) 0 var(--sp-2); border-left: 1px solid var(--line); }
+.stripGroup:first-child { border-left: 0; padding-left: 0; }
+.sheetChip { flex: none; display: grid; gap: 2px; width: 120px; padding: var(--sp-2); text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); cursor: pointer; scroll-snap-align: start; }
+.sheetChip:hover { border-color: var(--field-line); }
+.sheetChip.on { border-color: var(--accent); background: var(--bg); box-shadow: inset 0 0 0 1px var(--accent); }
+.sheetChip svg { width: 100%; height: auto; display: block; margin-bottom: 2px; }
+.sheetChip .mini { fill: var(--wood); stroke: var(--cut); stroke-width: 1px; fill-rule: evenodd; }
+.sheetChip b { font-size: var(--fs-sm); }
+.sheetChip small { font-size: var(--fs-xs); color: var(--muted); }
 .camSummary { color: var(--muted); font-size: var(--fs-sm); }
 .camSummary b { color: var(--ink); }
 .camSummary .air { color: var(--accent); }

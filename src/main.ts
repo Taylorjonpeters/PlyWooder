@@ -814,6 +814,8 @@ function camSheets(): (CamSheetRef & { gi: number; si: number })[] {
   return shownGroups().flatMap((g, gi) => (g.result?.sheets ?? []).map((sh, si) => ({
     gi, si,
     label: `${g.thickness} mm stock · sheet ${si + 1} of ${g.result!.sheets.length}`,
+    name: `Sheet ${si + 1}`,
+    group: `${g.thickness} mm stock`,
     fileBase: `${baseName()}_${g.thickness}mm_sheet${si + 1}`,
     sheet: {
       w: s.sheetW, h: s.sheetH, thickness: g.thickness, kerf: s.kerf, edgeMargin: s.edgeMargin,
