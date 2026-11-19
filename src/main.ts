@@ -543,6 +543,11 @@ function renderParts() {
   $('partsSection').hidden = !state.parts.length;
   const used = state.parts.filter((p) => state.choices.get(p.id)?.include).length;
   $('partsCount').textContent = `· ${used} of ${state.parts.length} on sheets`;
+  const notFlat = state.parts.filter((p) => !p.isPanel).length;
+  $('partsHint').hidden = !notFlat;
+  $('partsHint').textContent = notFlat
+    ? `${notFlat} ${notFlat === 1 ? "part isn't" : "parts aren't"} flat stock, so ${notFlat === 1 ? 'it starts' : 'they start'} unticked.`
+    : '';
   const host = $('parts');
   host.innerHTML = '';
   for (const p of state.parts) {
@@ -567,6 +572,7 @@ function renderParts() {
     row.addEventListener('mouseleave', () => highlight(p.id, false));
     host.appendChild(row);
   }
+  renderSkipped();
 }
 
 function highlight(partId: number, on: boolean) {
@@ -582,7 +588,10 @@ function render() {
   // What the shown layout was packed for, which can lag the workflow until it re-packs.
   const cncView = s.mode === 'optimal';
   $('empty').hidden = !!state.parts.length;
-  $('exportSection').hidden = !shownGroups().some((g) => g.result?.sheets.length);
+  const hasSheets = shownGroups().some((g) => g.result?.sheets.length);
+  $('exportSection').hidden = !hasSheets;
+  $('sideActions').hidden = !hasSheets;
+  renderSkipped();
   const host = $('sheets');
   host.innerHTML = '';
   shownGroups().forEach((g, gi) => {
@@ -632,6 +641,18 @@ function render() {
   applyStale(isStale());
   if (state.tab === 'gcode') cam.render();
   update3d();
+}
+
+/** Say which parts are missing from the sheets because they aren't flat stock, and how to add them. */
+function renderSkipped() {
+  const skipped = state.parts.filter((p) => !p.isPanel && !state.choices.get(p.id)?.include);
+  const note = $('skippedNote');
+  note.hidden = !skipped.length;
+  if (!skipped.length) return;
+  const names = [...new Set(skipped.map((p) => p.name))];
+  const shown = names.slice(0, 5).map(esc).join(', ');
+  note.innerHTML = `<b>Not on the sheets:</b> ${shown}${names.length > 5 ? ` and ${names.length - 5} more` : ''}. `
+    + `${skipped.length === 1 ? "It isn't" : "They aren't"} flat stock. Tick ${skipped.length === 1 ? 'it' : 'them'} under Parts to include ${skipped.length === 1 ? 'it' : 'them'}.`;
 }
 
 function throughPlan(shapes: PlacedShape[]): ThroughPlan {

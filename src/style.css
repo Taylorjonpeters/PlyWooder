@@ -113,7 +113,8 @@ input:focus-visible, select:focus-visible, .seg button:focus-visible { outline-o
    Layout
    --------------------------------------------------------------------------- */
 .app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
-.side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: var(--sp-4) var(--sp-4) 40px; }
+.side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: var(--sp-4) var(--sp-4) 0; }
+#layoutSettings, #camSettings { padding-bottom: var(--sp-5); }
 .brand h1 { margin: 0; font-size: var(--fs-xl); letter-spacing: -0.02em; }
 .brand p { margin: 2px 0 0; color: var(--muted); }
 
@@ -125,7 +126,8 @@ section h2 { margin: 0; font-size: var(--fs-xs); text-transform: uppercase; lett
    Fields: every input and select looks the same, and looks editable.
    Dense lists (bits, parts, the G-code bar) use the compact height.
    --------------------------------------------------------------------------- */
-label { display: grid; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--muted); }
+label, .field { display: grid; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--muted); }
+.fieldLabel { color: var(--muted); }
 label.check { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink); cursor: pointer; }
 label.check input { margin: 0; accent-color: var(--accent); }
 :where(input:not([type='checkbox']):not([type='range']):not([type='file']), select) {
@@ -172,11 +174,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 /* ---------------------------------------------------------------------------
    Parts list
    --------------------------------------------------------------------------- */
-.parts { display: grid; gap: 2px; }
+.parts { display: grid; gap: 2px; max-height: 280px; overflow-y: auto; }
+/* A collapsible sidebar section: the heading is the toggle. */
+details.collapse > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+details.collapse > summary::-webkit-details-marker { display: none; }
+details.collapse > summary::before { content: ''; width: 6px; height: 6px; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform 0.12s; }
+details.collapse[open] > summary::before { transform: rotate(45deg); }
+details.collapse > .hint { margin: var(--sp-2) 0; }
+details.collapse > .parts { margin-top: var(--sp-2); }
 .part { display: grid; grid-template-columns: 18px 1fr 52px; gap: var(--sp-2); align-items: center; padding: 5px var(--sp-1); border-radius: var(--r-ctl); }
 .part:hover, .part.hot { background: var(--bg); }
 .part .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.part .dims { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.part .dims { display: block; font-size: var(--fs-xs); color: var(--muted); white-space: normal; }
 .part.off .name { opacity: 0.5; }
 
 /* ---------------------------------------------------------------------------
@@ -192,6 +201,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .pane { overflow: auto; min-height: 0; position: relative; }
 #sheetsPane { padding: var(--sp-5) 20px; }
+#skippedNote { margin: 0 0 var(--sp-4); }
 .empty { max-width: 460px; margin: 12vh auto; text-align: center; color: var(--muted); }
 .empty h2 { color: var(--ink); font-size: var(--fs-xl); }
 
@@ -216,6 +226,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .notice.info { background: var(--info-bg); color: var(--info-ink); }
 .warn, .notice.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .warnText { color: var(--cut); font-weight: 600; }
+/* The sidebar's two main actions, pinned to the bottom edge. */
+.sideActions {
+  position: sticky; bottom: 0; z-index: 1; display: grid; gap: var(--sp-2);
+  margin: var(--sp-4) calc(-1 * var(--sp-4)) calc(-1 * var(--sp-5)); padding: var(--sp-3) var(--sp-4);
+  background: var(--panel); border-top: 1px solid var(--line);
+}
 /* Notices that sit under the tabs, on every tab. */
 .notices .notice { margin: var(--sp-3) var(--sp-4) 0; }
 .notice.stale { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); background: var(--info-bg); border-left: 3px solid var(--accent); }

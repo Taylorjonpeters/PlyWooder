@@ -49,6 +49,14 @@
 
         <!-- The sidebar follows the tab: layout settings for Sheets and 3D, CAM settings for G-code. -->
         <div id="layoutSettings">
+        <section id="partsSection" hidden>
+          <details class="collapse" open>
+            <summary><h2>Parts <span class="count" id="partsCount"></span></h2></summary>
+            <p class="hint" id="partsHint" hidden></p>
+            <div id="parts" class="parts"></div>
+          </details>
+        </section>
+
         <section id="cncSection" data-flow="cnc">
           <h2>Machine and sheet</h2>
           <label>Machine <select id="cncMachine">
@@ -107,6 +115,13 @@
               <option value="deg15">15° steps</option>
             </select>
           </label>
+          <div class="field">
+            <span class="fieldLabel">Part shape <span class="tip" tabindex="0" role="img" aria-label="Convex hull packs each part as its outer hull, so no part goes into another part's notch or hole. This changes the layout." data-tip="Convex hull packs each part as its outer hull, so no part goes into another part's notch or hole. This changes the layout.">i</span></span>
+            <div class="seg" id="shape">
+              <button data-v="true">Actual shape</button>
+              <button data-v="hull">Convex hull</button>
+            </div>
+          </div>
           <label id="effortRow" data-flow="cnc">Search effort
             <select id="effort">
               <option value="quick">Quick</option>
@@ -126,10 +141,6 @@
 
         <section>
           <h2>Display</h2>
-          <div class="seg" id="shape">
-            <button data-v="true">Actual cuts</button>
-            <button data-v="hull">Convex hull</button>
-          </div>
           <label class="check" data-flow="saw"><input type="checkbox" id="showThrough" /> Show through cuts</label>
           <label class="check" data-flow="cnc"><input type="checkbox" id="showCuts" /> Show CNC cut paths</label>
           <div class="seg" id="units">
@@ -138,22 +149,19 @@
           </div>
         </section>
 
-        <section id="partsSection" hidden>
-          <h2>Parts <span class="count" id="partsCount"></span></h2>
-          <div id="parts" class="parts"></div>
-        </section>
-
         <section id="exportSection" hidden>
           <h2>Export</h2>
           <div class="seg" id="dxfUnits">
             <button data-v="mm">DXF in mm</button>
             <button data-v="in">DXF in inches</button>
           </div>
-          <button class="primary" id="exportAll">Download all sheets (.dxf)</button>
           <p class="hint" data-flow="cnc">Layers for any CAM program <span class="tip" tabindex="0" role="img" aria-label="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET." data-tip="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET.">i</span></p>
-
-          <button class="primary wide" id="openGcode" type="button" data-flow="cnc">Make G-code <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
         </section>
+        <!-- The two main actions stay on screen however far the settings are scrolled. -->
+        <div class="sideActions" id="sideActions" hidden>
+          <button class="primary" id="exportAll" type="button">Download all sheets (.dxf)</button>
+          <button class="primary" id="openGcode" type="button" data-flow="cnc">Make G-code <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
+        </div>
         </div>
         <div id="camSettings" hidden></div>
       </aside>
@@ -177,6 +185,7 @@
             <h2>Open a STEP or DXF file to get started</h2>
             <p>Each solid or closed outline becomes a part.</p>
           </div>
+          <div class="notice info" id="skippedNote" hidden></div>
           <div id="sheets"></div>
         </div>
         <div class="pane" id="viewPane" hidden>
