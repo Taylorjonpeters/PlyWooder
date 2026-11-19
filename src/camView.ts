@@ -1,17 +1,26 @@
 import {
-  planSheet, gordixFit, currentTable, parseTableCfg, stockKey, DEFAULT_TOOLS, STUDIO_TABLES,
+  planSheet, gordixFit, currentTable, parseTableCfg, stockKey, DEFAULT_TOOLS, STUDIO_TABLES, MACHINE_LABELS,
   type CamJob, type CamSettings, type CamSheet, type Move, type OpKind, type Tool,
 } from './cam';
 import { writeGcode, estimateSeconds, cutLength, MACHINES } from './gcode';
 import { tip } from './tip';
+import { icon, setPlayState } from './icons';
 
 /** One sheet of the current layout, as the workspace sees it. */
-export type CamSheetRef = { label: string; sheet: CamSheet; fileBase: string };
+/**
+ * `label` is the full name (used in file headers); `name` and `group` are what the picker shows:
+ * "Sheet 2" under the heading "18 mm stock".
+ */
+export type CamSheetRef = { label: string; name: string; group: string; sheet: CamSheet; fileBase: string };
 
 export type CamHost = {
   sheets: () => CamSheetRef[];
+  /** The layout on screen is out of date, so nothing should be downloaded from it. */
+  stale: () => boolean;
   settings: () => CamSettings;
   save: () => void;
+  /** The layout's sheet already is the selected table's work area. */
+  usingWorkArea: () => boolean;
   /** Lay the sheets out on the selected table's work area, and re-pack. */
   useWorkArea: () => void;
   download: (name: string, text: string) => void;
@@ -22,6 +31,13 @@ const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const fmtTime = (s: number) => {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.round(s % 60);
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+};
+/** Plain-words duration for the summary and file cards: "1 h 42 min", "6 min", "40 s". */
+const fmtRun = (s: number) => {
+  const mins = Math.round(s / 60);
+  if (mins < 1) return `${Math.max(1, Math.round(s))} s`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
 };
 const num = (v: number) => String(Math.round(v * 1000) / 1000);
 
@@ -42,7 +58,19 @@ export class CamWorkspace {
   private $ = (id: string) => document.getElementById(id)!;
 
   constructor(private host: CamHost) {
-    this.$('camSheet').addEventListener('change', (e) => { this.index = Number((e.target as HTMLSelectElement).value); this.plan(); });
+    const strip = this.$('camSheet');
+    strip.addEventListener('click', (e) => {
+      const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-sheet]');
+      if (chip) this.pick(Number(chip.dataset.sheet));
+    });
+    // Arrow keys move between sheets, as in any tab list.
+    strip.addEventListener('keydown', (e) => {
+      const n = this.host.sheets().length;
+      const to = { ArrowRight: this.index + 1, ArrowDown: this.index + 1, ArrowLeft: this.index - 1, ArrowUp: this.index - 1, Home: 0, End: n - 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      this.pick(Math.max(0, Math.min(n - 1, to)), true);
+    });
     this.$('camDownloadAll').addEventListener('click', () => this.downloadAll());
     this.$('camPlay').addEventListener('click', () => this.togglePlay());
     this.$('camScrub').addEventListener('input', (e) => { this.pause(); this.setStep(Number((e.target as HTMLInputElement).value)); });
@@ -63,10 +91,49 @@ export class CamWorkspace {
     this.renderSettings();
     if (!sheets.length) { this.job = null; return; }
     if (this.index >= sheets.length) this.index = 0;
-    const sel = this.$('camSheet') as HTMLSelectElement;
-    sel.innerHTML = sheets.map((s, i) => `<option value="${i}">${esc(s.label)}</option>`).join('');
-    sel.value = String(this.index);
+    this.renderSheetStrip(sheets);
     this.plan();
+  }
+
+  /** Show sheet `i` without redrawing the strip's thumbnails. */
+  private pick(i: number, focus = false) {
+    if (i === this.index) return;
+    this.index = i;
+    this.markSheet(focus);
+    this.plan();
+  }
+
+  /** One chip per sheet: a thumbnail of what is on it, its name and part count, grouped by stock. */
+  private renderSheetStrip(sheets: CamSheetRef[]) {
+    const groups = new Set(sheets.map((s) => s.group));
+    let html = '';
+    sheets.forEach((ref, i) => {
+      if (groups.size > 1 && ref.group !== sheets[i - 1]?.group) html += `<span class="stripGroup" role="presentation">${esc(ref.group)}</span>`;
+      const { w, h, shapes } = ref.sheet;
+      const d = (poly: { x: number; y: number }[]) => 'M' + poly.map((q) => `${q.x.toFixed(0)},${(h - q.y).toFixed(0)}`).join('L') + 'Z';
+      const path = shapes.map((sh) => sh.regions.map((r) => [r.outer, ...r.holes].map(d).join('')).join('')).join('');
+      const n = shapes.length;
+      html += `<button class="sheetChip" role="tab" type="button" data-sheet="${i}">
+        <svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><rect class="sheetRect" width="${w}" height="${h}"/><path class="mini" d="${path}"/></svg>
+        <b>${esc(ref.name)}</b><small>${n} ${n === 1 ? 'part' : 'parts'}${groups.size > 1 ? '' : ` · ${num(ref.sheet.thickness)} mm`}</small>
+      </button>`;
+    });
+    this.$('camSheet').innerHTML = html;
+    this.markSheet(false);
+  }
+
+  /** Mark the current sheet's chip (and make it the one that takes the Tab key). */
+  private markSheet(focus: boolean) {
+    for (const chip of this.$('camSheet').querySelectorAll<HTMLElement>('[data-sheet]')) {
+      const on = Number(chip.dataset.sheet) === this.index;
+      chip.classList.toggle('on', on);
+      chip.setAttribute('aria-selected', String(on));
+      chip.tabIndex = on ? 0 : -1;
+      if (on) {
+        chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        if (focus) chip.focus();
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -126,7 +193,7 @@ export class CamWorkspace {
     const times = job.files.map((f) => estimateSeconds(f.moves, cfg.machine, centre));
     const total = times.reduce((a, b) => a + b, 0);
     this.$('camSummary').innerHTML = job.files.length
-      ? `<b>${job.files.length}</b> file${job.files.length > 1 ? 's' : ''} · about <b>${fmtTime(total)}</b> · stock ${num(job.stock)} mm, cut to Z−${num(job.cutDepth)}${cfg.airCut > 0 ? ' · <b class="air">air cut</b>' : ''}`
+      ? `<b>${job.files.length}</b> file${job.files.length > 1 ? 's' : ''} · est. run time <b>${fmtRun(total)}</b> · stock ${num(job.stock)} mm, cut to Z−${num(job.cutDepth)} mm${cfg.airCut > 0 ? ' · <b class="air">air cut</b>' : ''}`
       : 'Nothing to cut on this sheet.';
     const warn = this.$('camWarn');
     warn.hidden = !job.warnings.length;
@@ -136,14 +203,16 @@ export class CamWorkspace {
       const what = f.kind === 'laser' ? 'Laser module' : `${esc(f.tool!.name)} · ${num(f.tool!.diameter)} mm`;
       return `<div class="camFile">
         <span class="n">${i + 1}</span>
-        <div><b>${what}</b><small>${f.ops.map((o) => `<i class="op ${o}"></i>${OP_NAME[o]}`).join(' ')} · ${fmtTime(times[i])} · ${(cutLength(f.moves) / 1000).toFixed(1)} m</small></div>
+        <div><b>${what}</b><small class="ops">${f.ops.map((o) => `<span><i class="op ${o}"></i>${OP_NAME[o]}</span>`).join('')}</small><small>${fmtRun(times[i])} · ${(cutLength(f.moves) / 1000).toFixed(1)} m cut</small></div>
         <button class="ghost" data-dl="${i}">Download</button>
       </div>`;
     }).join('');
+    const stale = this.host.stale();
     for (const b of host.querySelectorAll<HTMLButtonElement>('[data-dl]')) {
+      b.disabled = stale;
       b.addEventListener('click', () => { const i = Number(b.dataset.dl); this.host.download(this.fileName(ref, i), this.text(ref, i)); });
     }
-    (this.$('camDownloadAll') as HTMLButtonElement).disabled = !job.files.length;
+    (this.$('camDownloadAll') as HTMLButtonElement).disabled = !job.files.length || stale;
   }
 
   private downloadAll() {
@@ -222,14 +291,14 @@ export class CamWorkspace {
     }
     this.$('camReadout').textContent = full
       ? `${this.timeline.length} moves · ${fmtTime(total)}`
-      : `File ${cur.file + 1} · ${OP_NAME[cur.m.op]} · Z ${num(cur.m.z)} · ${fmtTime(cur.t)} / ${fmtTime(total)}`;
+      : `File ${cur.file + 1} · ${OP_NAME[cur.m.op]} · Z ${num(cur.m.z)} mm · ${fmtTime(cur.t)} / ${fmtTime(total)}`;
   }
 
   private togglePlay() {
     if (this.playing) { this.pause(); return; }
     if (this.step >= this.timeline.length) this.setStep(0);
     this.playing = true;
-    this.$('camPlay').textContent = '❚❚';
+    setPlayState(this.$('camPlay'), true);
     // Play the whole job in about 20 seconds, whatever its length.
     const perFrame = Math.max(1, Math.ceil(this.timeline.length / (20 * 60)));
     const tick = () => {
@@ -243,7 +312,7 @@ export class CamWorkspace {
 
   private pause() {
     this.playing = false;
-    this.$('camPlay').textContent = '▶';
+    setPlayState(this.$('camPlay'), false);
   }
 
   // -------------------------------------------------------------------------
@@ -271,25 +340,27 @@ export class CamWorkspace {
     this.$('camSettings').innerHTML = `
       <section>
         <h2>Machine</h2>
-        <label>Machine<select data-k="machine">
-          <option value="gordix" ${gordix ? 'selected' : ''}>GORDIX (GORDIX Studio dialect)</option>
-          <option value="grbl" ${!gordix ? 'selected' : ''}>Generic GRBL</option>
+        <label>${lt('Machine', gordix ? 'Writes G-code in the dialect GORDIX Studio writes.' : 'Writes standard GRBL G-code.')}<select data-k="machine">
+          <option value="gordix" ${gordix ? 'selected' : ''}>${MACHINE_LABELS.gordix}</option>
+          <option value="grbl" ${!gordix ? 'selected' : ''}>${MACHINE_LABELS.grbl}</option>
         </select></label>
         <label>Origin (X0 Y0)<select data-k="origin">
           <option value="center" ${c.origin === 'center' ? 'selected' : ''}>Centre of the sheet</option>
           <option value="corner" ${c.origin === 'corner' ? 'selected' : ''}>Lower-left corner</option>
         </select></label>
-        ${gordix ? `<label>${lt('Table (mm)', `${c.tablesFile ? `From ${c.tablesFile}` : "GORDIX Studio's default tables"}. Table ${table.id}: S ${num(table.S)}, W ${num(table.W)}, E ${num(table.E)}, N ${num(table.N)}, diagonal ${num(table.D)} mm. Also sets the layout's sheet.`)}<select data-k="tableId" data-num="1">${tables.map((t) => {
+        ${gordix ? `<label>${lt('GORDIX table', `${c.tablesFile ? `From ${c.tablesFile}` : "GORDIX Studio's default tables"}. Table ${table.id}: S ${num(table.S)}, W ${num(table.W)}, E ${num(table.E)}, N ${num(table.N)}, diagonal ${num(table.D)} mm. Also sets the layout's sheet.`)}<select data-k="tableId" data-num="1">${tables.map((t) => {
             const f = gordixFit(t);
-            return `<option value="${t.id}" ${t.id === table.id ? 'selected' : ''}>${t.id}: ${num(t.S)} × ${num(t.W)} → cuts ${f.x * 2} × ${f.y * 2}</option>`;
+            return `<option value="${t.id}" ${t.id === table.id ? 'selected' : ''}>${t.id}: ${num(t.S)} × ${num(t.W)} mm · cuts ${f.x * 2} × ${f.y * 2} mm</option>`;
           }).join('')}</select></label>
           ${fit.rotate ? `<p class="hint">Sheet turned 90° ${tip("This table's X side (S) is its short one, so the G-code runs the sheet's long side along side W.")}</p>` : ''}
           <div class="pair">
-            <button class="ghost" id="camLoadTables" type="button" title="Exported from GORDIX Studio's table setup page">Load table.cfg…</button>
+            <button class="ghost" id="camLoadTables" type="button" data-tip="Exported from GORDIX Studio's table setup page">Load table.cfg…</button>
             <button class="ghost" id="camResetTables" type="button" ${c.tablesFile ? '' : 'disabled'}>Studio defaults</button>
           </div>
           <input type="file" id="camTableFile" accept=".cfg,.txt,text/plain" hidden />
-          <button class="ghost wide" id="camWorkArea" type="button" title="The GORDIX reaches less than its table">Use work area as sheet (${fit.x * 2} × ${fit.y * 2} mm)</button>`
+          ${this.host.usingWorkArea()
+            ? `<p class="hint">The sheet is this table's work area (${fit.x * 2} × ${fit.y * 2} mm).</p>`
+            : `<button class="ghost wide" id="camWorkArea" type="button" data-tip="The GORDIX reaches less than its table">Use work area as sheet (${fit.x * 2} × ${fit.y * 2} mm)</button>`}`
         : numIn('rpm', 'Spindle RPM', 0, '100', '0 leaves the spindle command out.')}
       </section>
 
@@ -299,15 +370,15 @@ export class CamWorkspace {
           ${c.tools.map((t, i) => `<div class="toolRow">
             <div class="toolName">
               <input data-tool="${i}" data-f="name" value="${esc(t.name)}" aria-label="Bit name"/>
-              <button class="ghost x" data-del="${i}" title="Remove this bit" aria-label="Remove ${esc(t.name)}" ${c.tools.length < 2 ? 'disabled' : ''}>✕</button>
+              <button class="ghost x" data-del="${i}" data-tip="Remove this bit" aria-label="Remove ${esc(t.name)}" ${c.tools.length < 2 ? 'disabled' : ''}>${icon('close')}</button>
             </div>
-            <label><span>Ø mm</span><input type="number" data-tool="${i}" data-f="diameter" value="${t.diameter}" min="0.1" step="any"/></label>
-            <label><span>Feed</span><input type="number" data-tool="${i}" data-f="feed" value="${t.feed}" min="1" step="any"/></label>
-            <label><span>Plunge</span><input type="number" data-tool="${i}" data-f="plungeFeed" value="${t.plungeFeed}" min="1" step="any"/></label>
-            <label><span>Per pass</span><input type="number" data-tool="${i}" data-f="depthPerPass" value="${t.depthPerPass}" min="0.1" step="any"/></label>
+            <label><span>Ø (mm)</span><input type="number" data-tool="${i}" data-f="diameter" value="${t.diameter}" min="0.1" step="any"/></label>
+            <label><span>Feed (mm/min)</span><input type="number" data-tool="${i}" data-f="feed" value="${t.feed}" min="1" step="any"/></label>
+            <label><span>Plunge (mm/min)</span><input type="number" data-tool="${i}" data-f="plungeFeed" value="${t.plungeFeed}" min="1" step="any"/></label>
+            <label><span>Per pass (mm)</span><input type="number" data-tool="${i}" data-f="depthPerPass" value="${t.depthPerPass}" min="0.1" step="any"/></label>
           </div>`).join('')}
         </div>
-        <button class="ghost" id="camAddTool" type="button">+ Add bit</button>
+        <button class="ghost" id="camAddTool" type="button">${icon('plus')} Add bit</button>
       </section>
 
       <section>

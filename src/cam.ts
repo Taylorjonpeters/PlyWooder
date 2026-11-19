@@ -141,6 +141,9 @@ export const stockKey = (t: number) => t.toFixed(2);
 export type GordixTable = { id: number; E: number; S: number; W: number; N: number; D: number; X: number; Y: number };
 
 /** GORDIX Studio's default tables (table_conf.html). */
+/** The names the UI uses for each machine, so the layout sidebar and the G-code sidebar read the same. */
+export const MACHINE_LABELS = { gordix: 'GORDIX', grbl: 'Other CNC (GRBL or DXF to CAM)' } as const;
+
 export const STUDIO_TABLES: GordixTable[] = [
   { id: 1, E: 1460, S: 2560, W: 1460, N: 2560, D: 2947, X: 1, Y: 1 },
   { id: 2, E: 1460, S: 1340, W: 1460, N: 1340, D: 1982, X: 1, Y: 1 },

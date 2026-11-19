@@ -10,7 +10,9 @@
     "test": "tsx scripts/pipeline-test.ts",
     "test:dxf": "tsx scripts/dxf-import-test.ts",
     "test:cam": "tsx scripts/cam-test.ts",
-    "test:suggest": "tsx scripts/suggest-test.ts"
+    "test:suggest": "tsx scripts/suggest-test.ts",
+    "test:labels": "tsx scripts/label-test.ts",
+    "test:through": "tsx scripts/through-test.ts"
   },
   "dependencies": {
     "clipper-lib": "^6.4.2",

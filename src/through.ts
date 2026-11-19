@@ -7,10 +7,14 @@ import { bbox, type BBox, type Region } from './geom';
  * once no straight line separates them need a CNC or jigsaw.
  */
 
-/** `offset`: distance in from the piece's left (vertical cut) or bottom (horizontal) edge. */
+/**
+ * `offset`: distance in from the piece's left (vertical cut) or bottom (horizontal) edge.
+ * `piece`: which piece the cut is made in: "the sheet", or the piece an earlier cut left, such as
+ * "the piece left of cut 2" or "the piece between cuts 2 and 3".
+ */
 export type ThroughCut = {
   x1: number; y1: number; x2: number; y2: number;
-  depth: number; label: string; vertical: boolean; offset: number; length: number;
+  depth: number; label: string; vertical: boolean; offset: number; length: number; piece: string;
 };
 export type ThroughPlan = { cuts: ThroughCut[]; freed: number; locked: string[] };
 
@@ -37,7 +41,7 @@ export function throughCuts(parts: { key: string; regions: Region[] }[], w: numb
     return out;
   };
 
-  const split = (rect: BBox, its: Item[], depth: number) => {
+  const split = (rect: BBox, its: Item[], depth: number, piece: string) => {
     if (its.length <= 1) { freed += its.length; return; }
     const vx = bands(its, 'x'), hy = bands(its, 'y');
     if (!vx.length && !hy.length) { locked.push(...its.map((i) => i.key)); return; }
@@ -45,11 +49,12 @@ export function throughCuts(parts: { key: string; regions: Region[] }[], w: numb
     const rw = rect.maxX - rect.minX, rh = rect.maxY - rect.minY;
     const vertical = vx.length > hy.length || (vx.length === hy.length && rw >= rh);
     const at = vertical ? vx : hy;
+    const first = n + 1;
     for (const c of at) {
       n++;
       cuts.push(vertical
-        ? { x1: c, y1: rect.minY, x2: c, y2: rect.maxY, depth, label: String(n), vertical, offset: c - rect.minX, length: rh }
-        : { x1: rect.minX, y1: c, x2: rect.maxX, y2: c, depth, label: String(n), vertical, offset: c - rect.minY, length: rw });
+        ? { x1: c, y1: rect.minY, x2: c, y2: rect.maxY, depth, label: String(n), vertical, offset: c - rect.minX, length: rh, piece }
+        : { x1: rect.minX, y1: c, x2: rect.maxX, y2: c, depth, label: String(n), vertical, offset: c - rect.minY, length: rw, piece });
     }
     const edges = [vertical ? rect.minX : rect.minY, ...at, vertical ? rect.maxX : rect.maxY];
     for (let i = 0; i < edges.length - 1; i++) {
@@ -59,10 +64,14 @@ export function throughCuts(parts: { key: string; regions: Region[] }[], w: numb
       const inside = its.filter((it) => (vertical
         ? it.bb.minX >= sub.minX && it.bb.maxX <= sub.maxX
         : it.bb.minY >= sub.minY && it.bb.maxY <= sub.maxY));
-      split(sub, inside, depth + 1);
+      // Name the piece by the cuts that border it, so the cut list says where each cut is made.
+      const last = first + at.length - 1;
+      const [before, after] = vertical ? ['left of', 'right of'] : ['below', 'above'];
+      const where = i === 0 ? `${before} cut ${first}` : i === at.length ? `${after} cut ${last}` : `between cuts ${first + i - 1} and ${first + i}`;
+      split(sub, inside, depth + 1, `the piece ${where}`);
     }
   };
 
-  if (items.length) split({ minX: 0, minY: 0, maxX: w, maxY: h }, items, 0);
+  if (items.length) split({ minX: 0, minY: 0, maxX: w, maxY: h }, items, 0, 'the sheet');
   return { cuts, freed, locked };
 }

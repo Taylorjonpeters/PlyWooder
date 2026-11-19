@@ -7,6 +7,13 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 2.5v11l9-5.5z" fill="currentColor" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 16 16"><path d="M3.5 2.5h3.2v11H3.5zM9.3 2.5h3.2v11H9.3z" fill="currentColor" /></symbol>
+      <symbol id="i-close" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></symbol>
+      <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M2.5 8h10.5M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></symbol>
+    </svg>
     <div class="app">
       <aside class="side">
         <header class="brand">
@@ -14,9 +21,9 @@
           <p>STEP in, cut sheets out.</p>
         </header>
 
-        <section>
+        <section id="fileSection">
           <div class="seg" id="workflow" role="group" aria-label="How you're cutting">
-            <button data-v="saw">Saw</button>
+            <button data-v="saw">Manual Cut</button>
             <button data-v="cnc">CNC router</button>
           </div>
           <label class="drop" id="drop">
@@ -27,7 +34,7 @@
           <div class="dxfOpts" id="dxfOpts" hidden>
             <div class="row2">
               <label>Thickness <input type="number" id="importThickness" step="any" min="0.1" /></label>
-              <label>Drawing units
+              <label>Units in this drawing
                 <select id="importUnits">
                   <option value="auto">From file</option>
                   <option value="mm">mm</option>
@@ -38,17 +45,21 @@
             </div>
             <p class="hint" id="dxfHint"></p>
           </div>
-          <button class="primary repack" id="repack" hidden>Repack</button>
         </section>
 
         <!-- The sidebar follows the tab: layout settings for Sheets and 3D, CAM settings for G-code. -->
         <div id="layoutSettings">
+        <section id="partsSection" hidden>
+          <details class="collapse" open>
+            <summary><h2>Parts <span class="count" id="partsCount"></span></h2></summary>
+            <p class="hint" id="partsHint" hidden></p>
+            <div id="parts" class="parts"></div>
+          </details>
+        </section>
+
         <section id="cncSection" data-flow="cnc">
           <h2>Machine and sheet</h2>
-          <label>Machine <select id="cncMachine">
-            <option value="gordix">GORDIX</option>
-            <option value="grbl">Other CNC (GRBL or DXF to CAM)</option>
-          </select></label>
+          <label>Machine <select id="cncMachine"><!-- filled from MACHINE_LABELS in main.ts --></select></label>
           <label id="cncTableRow">GORDIX table <select id="cncTable"></select></label>
           <label>Sheet <select id="cncSheet">
             <option value="table">The table's work area</option>
@@ -59,7 +70,7 @@
             <label>Width <input type="number" id="cncH" step="any" min="1" /></label>
           </div>
           <div class="suggestRow">
-            <button class="ghost" id="cncSuggest" type="button">Suggest sheet size</button>
+            <button class="ghost" id="cncSuggest" type="button">Suggest size</button>
             <label>from <select id="cncStock" aria-label="Stock sheet to cut from">
               <option value="2438.4x1219.2">4 × 8 ft</option>
               <option value="2500x1250">2500 × 1250 mm</option>
@@ -101,6 +112,13 @@
               <option value="deg15">15° steps</option>
             </select>
           </label>
+          <div class="field">
+            <span class="fieldLabel">Part shape <span class="tip" tabindex="0" role="img" aria-label="Convex hull packs each part as its outer hull, so no part goes into another part's notch or hole. This changes the layout." data-tip="Convex hull packs each part as its outer hull, so no part goes into another part's notch or hole. This changes the layout.">i</span></span>
+            <div class="seg" id="shape">
+              <button data-v="true">Actual shape</button>
+              <button data-v="hull">Convex hull</button>
+            </div>
+          </div>
           <label id="effortRow" data-flow="cnc">Search effort
             <select id="effort">
               <option value="quick">Quick</option>
@@ -116,38 +134,38 @@
           <label data-flow="saw">Blade width (kerf) <input type="number" id="kerf" step="any" min="0" /></label>
           <label class="check"><input type="checkbox" id="shareCuts" /> Share cuts between parts <span class="tip" tabindex="0" role="img" aria-label="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges." data-tip="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges.">i</span></label>
           <label id="errorGapRow">Extra gap between parts <input type="number" id="errorGap" step="any" min="0" /></label>
+          <p class="hint" id="errorGapHint" hidden>Not used while Share cuts is on: neighbours sit exactly one bit or blade width apart.</p>
         </section>
 
         <section>
           <h2>Display</h2>
-          <div class="seg" id="shape">
-            <button data-v="true">Actual cuts</button>
-            <button data-v="hull">Convex hull</button>
-          </div>
           <label class="check" data-flow="saw"><input type="checkbox" id="showThrough" /> Show through cuts</label>
           <label class="check" data-flow="cnc"><input type="checkbox" id="showCuts" /> Show CNC cut paths</label>
-          <div class="seg" id="units">
-            <button data-v="mm">mm</button>
-            <button data-v="in">inches</button>
+          <div class="field">
+            <span class="fieldLabel">Show lengths in</span>
+            <div class="seg" id="units">
+              <button data-v="mm">mm</button>
+              <button data-v="in">inches</button>
+            </div>
           </div>
-        </section>
-
-        <section id="partsSection" hidden>
-          <h2>Parts <span class="count" id="partsCount"></span></h2>
-          <div id="parts" class="parts"></div>
         </section>
 
         <section id="exportSection" hidden>
           <h2>Export</h2>
-          <div class="seg" id="dxfUnits">
-            <button data-v="mm">DXF in mm</button>
-            <button data-v="in">DXF in inches</button>
+          <div class="field">
+            <span class="fieldLabel">DXF file units</span>
+            <div class="seg" id="dxfUnits">
+              <button data-v="mm">mm</button>
+              <button data-v="in">inches</button>
+            </div>
           </div>
-          <button class="primary" id="exportAll">Download all sheets (.dxf)</button>
           <p class="hint" data-flow="cnc">Layers for any CAM program <span class="tip" tabindex="0" role="img" aria-label="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET." data-tip="CUT_OUTSIDE, CUT_INSIDE, POCKET_<depth>, CUT_PATHS (tool-centre paths in cutting order; profile on the line with the same bit), SAW_CUTS, LABELS, SHEET.">i</span></p>
-
-          <button class="primary wide" id="openGcode" type="button" data-flow="cnc">Make G-code →</button>
         </section>
+        <!-- The two main actions stay on screen however far the settings are scrolled. -->
+        <div class="sideActions" id="sideActions" hidden>
+          <button class="primary" id="exportAll" type="button">Download all (.dxf)</button>
+          <button class="primary" id="openGcode" type="button" data-flow="cnc">Make G-code <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
+        </div>
         </div>
         <div id="camSettings" hidden></div>
       </aside>
@@ -159,17 +177,30 @@
           <button data-tab="gcode" data-flow="cnc">G-code</button>
           <span class="status" id="status"></span>
         </nav>
+        <!-- Messages that apply to every tab: out-of-date layout now, file errors later. -->
+        <div class="notices" id="notices">
+          <div class="notice stale" id="staleBar" role="status" hidden>
+            <span><b>Settings changed.</b> The layout below is out of date.</span>
+            <button class="primary" id="repack" type="button">Repack</button>
+          </div>
+          <div class="notice warn" id="errorBar" role="alert" hidden>
+            <span id="errorText"></span>
+            <button class="ghost" id="errorClose" type="button" aria-label="Dismiss"><svg class="ico" aria-hidden="true"><use href="#i-close" /></svg></button>
+          </div>
+        </div>
         <div class="pane" id="sheetsPane">
           <div class="empty" id="empty">
             <h2>Open a STEP or DXF file to get started</h2>
             <p>Each solid or closed outline becomes a part.</p>
           </div>
+          <div class="empty" id="packing" hidden><h2>Packing your parts…</h2></div>
+          <div class="notice info" id="skippedNote" hidden></div>
           <div id="sheets"></div>
         </div>
         <div class="pane" id="viewPane" hidden>
           <div id="view3d"></div>
           <div class="player">
-            <button id="play">▶</button>
+            <button id="play" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play" /></svg></button>
             <input type="range" id="scrub" min="0" max="1000" value="0" />
           </div>
         </div>
@@ -181,7 +212,7 @@
           <div class="cam" id="camBody" hidden>
             <div class="camMain">
               <div class="camBar">
-                <select id="camSheet" aria-label="Sheet"></select>
+                <div class="sheetStrip" id="camSheet" role="tablist" aria-label="Sheets"></div>
                 <span class="camSummary" id="camSummary"></span>
                 <button class="primary" id="camDownloadAll">Download all files</button>
               </div>
@@ -195,7 +226,7 @@
                 </div>
               </div>
               <div class="player camPlayer">
-                <button id="camPlay" aria-label="Play">▶</button>
+                <button id="camPlay" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play" /></svg></button>
                 <input type="range" id="camScrub" min="0" max="1" value="0" aria-label="Job progress" />
                 <span class="camReadout" id="camReadout"></span>
               </div>
@@ -204,18 +235,18 @@
         </div>
       </main>
     </div>
+    <!-- First visit: two buttons are the whole question. Outside click, Escape or the close button skips it. -->
     <div class="chooser" id="chooser" hidden>
-      <div class="chooserBox" role="dialog" aria-modal="true" aria-labelledby="chooserTitle">
-        <h2 id="chooserTitle">How are you cutting?</h2>
-        <p>You can switch later at the top of the sidebar.</p>
+      <div class="chooserBox" role="dialog" aria-modal="true" aria-label="Choose how you're cutting">
+        <button class="ghost chooserClose" id="chooserClose" type="button" aria-label="Close"><svg class="ico" aria-hidden="true"><use href="#i-close" /></svg></button>
         <div class="chooserCards">
           <button class="chooserCard" data-flow-pick="saw">
-            <b>Table saw or track saw</b>
-            <span>Strips and rows, every cut edge to edge, with a numbered cut order.</span>
+            <b>Manual Cut</b>
+            <span>Straight cuts from edge to edge, in a numbered order.</span>
           </button>
           <button class="chooserCard" data-flow-pick="cnc">
             <b>CNC router</b>
-            <span>Tight true-shape nesting, sized to your machine and bit, with G-code for GORDIX or GRBL.</span>
+            <span>Tight nesting for your machine and bit, plus G-code.</span>
           </button>
         </div>
       </div>

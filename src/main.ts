@@ -8,19 +8,23 @@ import { throughCuts, type ThroughCut, type ThroughPlan } from './through';
 import type { NestRequest, SuggestJob } from './nest.worker';
 import type { SuggestResult } from './suggest';
 import { toDxf, toSvg, type DxfSheet } from './dxf';
-import { CAM_DEFAULTS, DEFAULT_TOOLS, STUDIO_TABLES, currentTable, gordixFit, type CamSettings } from './cam';
+import { CAM_DEFAULTS, DEFAULT_TOOLS, MACHINE_LABELS, STUDIO_TABLES, currentTable, gordixFit, type CamSettings } from './cam';
 import { CamWorkspace, type CamSheetRef } from './camView';
 import { initTips } from './tip';
+import { setPlayState } from './icons';
 import { View3D, type Sheet3D, type SheetPlacement } from './view3d';
 import { fmtLen, toUnits, fromUnits, type Units } from './units';
 import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
 
 type Settings = NestSettings & {
-  units: Units; dxfUnits: Units; preset: string; showCuts: boolean; showThrough: boolean;
+  units: Units; dxfUnits: Units;
+  /** DXF units follow the display units until the user picks them. */
+  dxfUnitsExplicit: boolean;
+  preset: string; showCuts: boolean; showThrough: boolean;
   /** DXF import: drawings are flat, so the stock thickness comes from here. */
   importThickness: number; importUnits: DxfUnits;
-  /** How the sheets will be cut; null until chosen, which shows the chooser. */
+  /** How the sheets will be cut; null until chosen, which shows the chooser (Saw applies until then). */
   workflow: Workflow | null;
   /**
    * The CNC sheet: the GORDIX table's work area, or a custom size (mm). In CNC mode the sheet and
@@ -36,7 +40,7 @@ const DEFAULTS: Settings = {
   sheetW: 2438.4, sheetH: 1219.2, preset: '2438.4x1219.2',
   edgeMargin: 12.7, kerf: 6.35, errorGap: 3.2, shareCuts: true,
   mode: 'easy', shape: 'true', rotation: 'free90', effort: 'normal',
-  units: 'mm', dxfUnits: 'mm', showCuts: false, showThrough: true, importThickness: 18, importUnits: 'auto',
+  units: 'mm', dxfUnits: 'mm', dxfUnitsExplicit: false, showCuts: false, showThrough: true, importThickness: 18, importUnits: 'auto',
   workflow: null,
   cnc: { sheet: 'table', sheetW: 2438.4, sheetH: 1219.2, stock: '2438.4x1219.2' },
   cam: CAM_DEFAULTS,
@@ -60,7 +64,10 @@ function camSettings(saved?: Partial<CamSettings>): CamSettings {
 function loadSettings(): Settings {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) ?? '{}');
-    return { ...DEFAULTS, ...saved, cnc: { ...DEFAULTS.cnc, ...saved.cnc }, cam: camSettings(saved.cam) };
+    const merged = { ...DEFAULTS, ...saved, cnc: { ...DEFAULTS.cnc, ...saved.cnc }, cam: camSettings(saved.cam) };
+    // Settings saved before DXF units followed the display units: a differing choice was deliberate.
+    if (saved.dxfUnitsExplicit === undefined && saved.dxfUnits && saved.dxfUnits !== saved.units) merged.dxfUnitsExplicit = true;
+    return merged;
   } catch { return { ...DEFAULTS, cnc: { ...DEFAULTS.cnc }, cam: camSettings() }; }
 }
 
@@ -90,6 +97,8 @@ let dxfText: string | null = null;
 
 async function openFile(file: File) {
   setStatus(`Reading ${file.name}…`, true);
+  // A file that fails to open must leave the previous one working.
+  const prev = { text: dxfText, name: state.fileName };
   try {
     if (/\.dxf$/i.test(file.name)) {
       dxfText = await file.text();
@@ -99,13 +108,24 @@ async function openFile(file: File) {
       const [occt, buf] = await Promise.all([getOcct(), file.arrayBuffer()]);
       dxfText = null;
       state.fileName = file.name;
-      loadParts(partsFromStep(occt, new Uint8Array(buf)), 'solids');
+      loadParts(partsFromStep(occt, new Uint8Array(buf)));
     }
   } catch (err) {
     console.error(err);
-    setStatus(`Couldn't read that file: ${(err as Error).message}`);
+    dxfText = prev.text;
+    state.fileName = prev.name;
+    showError(`Couldn't open ${file.name}. ${(err as Error).message}`);
+    updateRepack();
+    if (!state.parts.length) setStatus('');
   }
 }
+
+/** A message under the tabs, visible on every tab, until the next file opens or it is dismissed. */
+function showError(text: string) {
+  $('errorText').textContent = text;
+  $('errorBar').hidden = false;
+}
+const clearError = () => { $('errorBar').hidden = true; };
 
 function loadDxf() {
   if (dxfText === null) return;
@@ -117,24 +137,26 @@ function loadDxf() {
     r.openShapes ? `${r.openShapes} open shape${r.openShapes > 1 ? 's' : ''} didn't close and ${r.openShapes > 1 ? 'were' : 'was'} left out.` : '',
   ];
   $('dxfHint').textContent = notes.filter(Boolean).join(' ');
-  if (!r.parts.length) throw new Error('no closed outlines found');
-  loadParts(r.parts, 'outlines');
+  if (!r.parts.length) throw new Error('No closed outlines found. Each part must be a closed shape; lines that never join up are left out.');
+  loadParts(r.parts);
 }
 
-function loadParts(parts: Part[], noun: string) {
+function loadParts(parts: Part[]) {
   state.parts = parts;
   state.choices = new Map(parts.map((p) => [p.id, { include: p.isPanel, qty: 1 }]));
   state.cache.clear();
   state.shown = null;
   $('fileName').textContent = state.fileName;
-  $('fileHint').textContent = `${parts.length} ${noun} · click to open another`;
+  $('fileHint').textContent = `${parts.length} ${parts.length === 1 ? 'part' : 'parts'} · click to open another`;
   $('dxfOpts').hidden = dxfText === null;
   syncControls();
   renderParts();
   $('empty').hidden = true;
+  clearError();
   state.autoplayPending = true;
   view3d.setScene(parts, [], []);
-  showTab('3d');
+  has3dSheets = false; // the new scene has no sheets until it is packed
+  showTab('sheets');
   repack();
 }
 
@@ -196,16 +218,32 @@ function settingsChanged() {
   updateRepack();
 }
 
+/** True when the layout on screen was packed with different settings from the ones in the sidebar. */
+function isStale() {
+  return !!state.parts.length && !state.cache.has(packKey(nestSettings()));
+}
+
+/**
+ * Keep the screen honest about an out-of-date layout: a banner with a Repack button, the sheets
+ * dimmed, and every export and G-code action off until the layout is packed again.
+ */
 function updateRepack() {
-  const stale = !!state.parts.length && !state.cache.has(packKey(nestSettings()));
-  $('repack').hidden = !stale || state.busy;
+  const stale = isStale();
+  $('staleBar').hidden = !stale || state.busy;
+  applyStale(stale);
   if (state.busy) return;
-  if (stale) setStatus('Settings changed — repack to update the layout');
+  if (stale) setStatus('Layout out of date');
   else if (state.shown) {
     const n = state.shown.groups.reduce((a, g) => a + g.items.length, 0);
     const sheets = state.shown.groups.reduce((a, g) => a + (g.result?.sheets.length ?? 0), 0);
     setStatus(n ? `${n} parts on ${sheets} sheet${sheets === 1 ? '' : 's'}` : 'No parts selected');
   }
+}
+
+function applyStale(stale: boolean) {
+  $('sheets').classList.toggle('stale', stale);
+  const actions = document.querySelectorAll<HTMLButtonElement>('#exportAll, #openGcode, #sheets .actions button');
+  for (const b of actions) b.disabled = stale;
 }
 
 /** Pack the parts with the current settings and show the result. */
@@ -224,7 +262,8 @@ function repack() {
   const id = ++jobId;
   const n = groups.reduce((a, g) => a + g.items.length, 0);
   state.busy = true;
-  $('repack').hidden = true;
+  $('staleBar').hidden = true;
+  $('packing').hidden = !!state.shown || state.tab !== 'sheets';
   setStatus(`Packing ${n} parts…`, true);
   worker.onmessage = (e: MessageEvent<{ id: number; results: NestResult[][] }>) => {
     if (e.data.id !== id) return;
@@ -263,8 +302,23 @@ function saveSettings() {
 
 const lenInputs = ['sheetW', 'sheetH', 'edgeMargin', 'kerf', 'errorGap', 'importThickness'] as const;
 
+/** Put the current unit after each length field's label, e.g. "Length (mm)". */
+const unitFields = ['sheetW', 'sheetH', 'edgeMargin', 'kerf', 'errorGap', 'importThickness', 'cncW', 'cncH'];
+function labelUnits() {
+  const u = state.settings.units === 'mm' ? 'mm' : 'in';
+  for (const id of unitFields) {
+    const input = $<HTMLInputElement>(id);
+    const text = [...input.parentElement!.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
+    if (!text) continue;
+    const el = input.parentElement!;
+    el.dataset.base ??= text.textContent!.trim();
+    text.textContent = `${el.dataset.base} (${u}) `;
+  }
+}
+
 function syncControls() {
   const s = state.settings;
+  labelUnits();
   for (const k of lenInputs) {
     const el = $<HTMLInputElement>(k);
     if (document.activeElement !== el) el.value = String(toUnits(s[k], s.units));
@@ -274,13 +328,13 @@ function syncControls() {
   $<HTMLSelectElement>('importUnits').value = s.importUnits;
   $<HTMLSelectElement>('effort').value = s.effort;
   for (const seg of ['workflow', 'shape', 'units', 'dxfUnits'] as const) {
-    for (const b of $(seg).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === s[seg]);
+    for (const b of $(seg).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === (seg === 'workflow' ? s.workflow ?? 'saw' : s[seg]));
   }
   $<HTMLInputElement>('shareCuts').checked = s.shareCuts;
   $<HTMLInputElement>('showCuts').checked = s.showCuts;
   $<HTMLInputElement>('showThrough').checked = s.showThrough;
   $<HTMLInputElement>('errorGap').disabled = s.shareCuts;
-  $('errorGapRow').style.opacity = s.shareCuts ? '0.45' : '';
+  $('errorGapHint').hidden = !s.shareCuts;
   syncWorkflow();
 }
 
@@ -324,11 +378,17 @@ function bindControls() {
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-flow-pick]')) {
     b.addEventListener('click', () => setWorkflow(b.dataset.flowPick as Workflow));
   }
+  $('chooserClose').addEventListener('click', skipChooser);
+  $('chooser').addEventListener('click', (e) => { if (e.target === $('chooser')) skipChooser(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('chooser').hidden) skipChooser(); });
   bindCnc();
   // Packing with hulls keeps parts out of each other's notches, so a shape change re-nests.
   seg('shape', () => settingsChanged());
-  seg('units', () => { renderParts(); render(); saveSettings(); });
-  seg('dxfUnits', saveSettings);
+  seg('units', () => {
+    if (!s.dxfUnitsExplicit) s.dxfUnits = s.units;
+    syncControls(); renderParts(); render(); saveSettings();
+  });
+  seg('dxfUnits', () => { s.dxfUnitsExplicit = true; saveSettings(); });
   $<HTMLInputElement>('shareCuts').addEventListener('change', (e) => { s.shareCuts = (e.target as HTMLInputElement).checked; syncControls(); settingsChanged(); });
   $<HTMLInputElement>('showThrough').addEventListener('change', (e) => { s.showThrough = (e.target as HTMLInputElement).checked; saveSettings(); render(); });
   $<HTMLInputElement>('showCuts').addEventListener('change', (e) => { s.showCuts = (e.target as HTMLInputElement).checked; saveSettings(); render(); });
@@ -354,6 +414,7 @@ function bindControls() {
     b.addEventListener('click', () => showTab(b.dataset.tab as Tab));
   }
   $('repack').addEventListener('click', repack);
+  $('errorClose').addEventListener('click', clearError);
   $('openGcode').addEventListener('click', () => showTab('gcode'));
   $('exportAll').addEventListener('click', () => {
     const all = shownGroups().flatMap((g, gi) => (g.result?.sheets ?? []).map((_, si) => dxfSheet(gi, si)));
@@ -362,11 +423,11 @@ function bindControls() {
 
   $('play').addEventListener('click', () => {
     if (view3d.isPlaying) view3d.pause(); else view3d.play();
-    $('play').textContent = view3d.isPlaying ? '❚❚' : '▶';
+    setPlayState($('play'), view3d.isPlaying);
   });
   $<HTMLInputElement>('scrub').addEventListener('input', (e) => {
     view3d.pause();
-    $('play').textContent = '▶';
+    setPlayState($('play'), false);
     view3d.setProgress(Number((e.target as HTMLInputElement).value) / 1000);
   });
 }
@@ -374,6 +435,13 @@ function bindControls() {
 // ---------------------------------------------------------------------------
 // Saw or CNC
 // ---------------------------------------------------------------------------
+
+/** The first-run question was closed without an answer: stay on Saw, and ask again next visit. */
+let chooserSkipped = false;
+function skipChooser() {
+  chooserSkipped = true;
+  $('chooser').hidden = true;
+}
 
 /** Switch between saw and CNC: the sidebar, tabs and packing all follow. */
 function setWorkflow(w: Workflow) {
@@ -391,7 +459,7 @@ function setWorkflow(w: Workflow) {
 function syncWorkflow() {
   const s = state.settings;
   const cnc = isCnc();
-  $('chooser').hidden = s.workflow !== null;
+  $('chooser').hidden = s.workflow !== null || chooserSkipped;
   for (const el of document.querySelectorAll<HTMLElement>('[data-flow]')) el.hidden = el.dataset.flow !== (cnc ? 'cnc' : 'saw');
   if (!cnc) return;
   const c = s.cam;
@@ -401,7 +469,7 @@ function syncWorkflow() {
   const tables = c.tables.length ? c.tables : STUDIO_TABLES;
   $('cncTable').innerHTML = tables.map((t) => {
     const f = gordixFit(t);
-    return `<option value="${t.id}">${t.id}: ${Math.round(t.S)} × ${Math.round(t.W)} → cuts ${f.x * 2} × ${f.y * 2}</option>`;
+    return `<option value="${t.id}">${t.id}: ${Math.round(t.S)} × ${Math.round(t.W)} mm · cuts ${f.x * 2} × ${f.y * 2} mm</option>`;
   }).join('');
   $<HTMLSelectElement>('cncTable').value = String(currentTable(c).id);
   const sheetSel = $<HTMLSelectElement>('cncSheet');
@@ -476,7 +544,7 @@ function suggestSize() {
   hint.hidden = true;
   suggestWorker?.terminate();
   suggestWorker = new Worker(new URL('./nest.worker.ts', import.meta.url), { type: 'module' });
-  const done = () => { suggesting = false; btn.textContent = 'Suggest sheet size'; suggestWorker?.terminate(); suggestWorker = null; syncControls(); };
+  const done = () => { suggesting = false; btn.textContent = 'Suggest size'; suggestWorker?.terminate(); suggestWorker = null; syncControls(); };
   suggestWorker.onmessage = (e: MessageEvent<{ progress?: number; suggestion?: SuggestResult }>) => {
     if (e.data.progress) { btn.textContent = `Searching… ${e.data.progress}`; return; }
     const r = e.data.suggestion!;
@@ -506,7 +574,7 @@ function reloadDxf() {
   saveSettings();
   clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => {
-    try { loadDxf(); } catch (err) { setStatus(`Couldn't read that file: ${(err as Error).message}`); }
+    try { loadDxf(); } catch (err) { showError((err as Error).message); }
   }, 400);
 }
 
@@ -520,6 +588,7 @@ function showTab(tab: Tab) {
   $('layoutSettings').hidden = tab === 'gcode';
   $('camSettings').hidden = tab !== 'gcode';
   if (tab === 'gcode') cam.render();
+  autoplay3d();
 }
 
 function renderParts() {
@@ -527,6 +596,11 @@ function renderParts() {
   $('partsSection').hidden = !state.parts.length;
   const used = state.parts.filter((p) => state.choices.get(p.id)?.include).length;
   $('partsCount').textContent = `· ${used} of ${state.parts.length} on sheets`;
+  const notFlat = state.parts.filter((p) => !p.isPanel).length;
+  $('partsHint').hidden = !notFlat;
+  $('partsHint').textContent = notFlat
+    ? `${notFlat} ${notFlat === 1 ? "part isn't" : "parts aren't"} flat stock, so ${notFlat === 1 ? 'it starts' : 'they start'} unticked.`
+    : '';
   const host = $('parts');
   host.innerHTML = '';
   for (const p of state.parts) {
@@ -536,9 +610,9 @@ function renderParts() {
     row.dataset.part = String(p.id);
     row.innerHTML = `
       <input type="checkbox" ${c.include ? 'checked' : ''} aria-label="Include ${esc(p.name)}" />
-      <div class="name" title="${esc(p.name)}">${esc(p.name)}
+      <div class="name" data-tip="${esc(p.name)}">${esc(p.name)}
         <span class="dims">${fmtLen(p.w, units, false)} × ${fmtLen(p.h, units, false)} × ${fmtLen(p.thickness, units)}${p.isPanel ? '' : ' · not flat stock'}</span></div>
-      <input type="number" min="0" step="1" value="${c.qty}" aria-label="Quantity" title="Quantity" />`;
+      <input type="number" min="0" step="1" value="${c.qty}" aria-label="Quantity" data-tip="Quantity" />`;
     const [check, qty] = row.querySelectorAll('input');
     check.addEventListener('change', () => { c.include = check.checked; renderParts(); settingsChanged(); });
     qty.addEventListener('input', () => {
@@ -551,6 +625,7 @@ function renderParts() {
     row.addEventListener('mouseleave', () => highlight(p.id, false));
     host.appendChild(row);
   }
+  renderSkipped();
 }
 
 function highlight(partId: number, on: boolean) {
@@ -563,10 +638,14 @@ function highlight(partId: number, on: boolean) {
 
 function render() {
   const s = view();
+  $('packing').hidden = true;
   // What the shown layout was packed for, which can lag the workflow until it re-packs.
   const cncView = s.mode === 'optimal';
   $('empty').hidden = !!state.parts.length;
-  $('exportSection').hidden = !shownGroups().some((g) => g.result?.sheets.length);
+  const hasSheets = shownGroups().some((g) => g.result?.sheets.length);
+  $('exportSection').hidden = !hasSheets;
+  $('sideActions').hidden = !hasSheets;
+  renderSkipped();
   const host = $('sheets');
   host.innerHTML = '';
   shownGroups().forEach((g, gi) => {
@@ -613,8 +692,21 @@ function render() {
     });
     host.appendChild(sec);
   });
+  applyStale(isStale());
   if (state.tab === 'gcode') cam.render();
   update3d();
+}
+
+/** Say which parts are missing from the sheets because they aren't flat stock, and how to add them. */
+function renderSkipped() {
+  const skipped = state.parts.filter((p) => !p.isPanel && !state.choices.get(p.id)?.include);
+  const note = $('skippedNote');
+  note.hidden = !skipped.length;
+  if (!skipped.length) return;
+  const names = [...new Set(skipped.map((p) => p.name))];
+  const shown = names.slice(0, 5).map(esc).join(', ');
+  note.innerHTML = `<b>Not on the sheets:</b> ${shown}${names.length > 5 ? ` and ${names.length - 5} more` : ''}. `
+    + `${skipped.length === 1 ? "It isn't" : "They aren't"} flat stock. Tick ${skipped.length === 1 ? 'it' : 'them'} under Parts to include ${skipped.length === 1 ? 'it' : 'them'}.`;
 }
 
 function throughPlan(shapes: PlacedShape[]): ThroughPlan {
@@ -637,7 +729,7 @@ function cutText(c: ThroughCut): string {
   const { units } = state.settings;
   const kind = c.vertical ? 'Crosscut' : 'Rip';
   const from = c.vertical ? 'left' : 'bottom';
-  return `${kind} ${fmtLen(c.offset, units)} in from the ${from} edge of the piece (${fmtLen(c.length, units)} long).`;
+  return `${kind} ${fmtLen(c.offset, units)} in from the ${from} edge of ${c.piece} (${fmtLen(c.length, units)} long).`;
 }
 
 /** Metres or feet of cutting. */
@@ -737,6 +829,8 @@ function camSheets(): (CamSheetRef & { gi: number; si: number })[] {
   return shownGroups().flatMap((g, gi) => (g.result?.sheets ?? []).map((sh, si) => ({
     gi, si,
     label: `${g.thickness} mm stock · sheet ${si + 1} of ${g.result!.sheets.length}`,
+    name: `Sheet ${si + 1}`,
+    group: `${g.thickness} mm stock`,
     fileBase: `${baseName()}_${g.thickness}mm_sheet${si + 1}`,
     sheet: {
       w: s.sheetW, h: s.sheetH, thickness: g.thickness, kerf: s.kerf, edgeMargin: s.edgeMargin,
@@ -747,6 +841,8 @@ function camSheets(): (CamSheetRef & { gi: number; si: number })[] {
 
 const cam = new CamWorkspace({
   sheets: camSheets,
+  stale: isStale,
+  usingWorkArea: () => state.settings.cam.machine === 'gordix' && state.settings.cnc.sheet === 'table',
   settings: () => state.settings.cam,
   // Machine, table and outline bit also set the CNC layout, so a change there may need a repack.
   // Only a change to the packing settings touches the layout; other edits just save, so typing in
@@ -773,7 +869,7 @@ const cam = new CamWorkspace({
 const view3d = new View3D($('view3d'));
 view3d.onProgress = (t) => {
   $<HTMLInputElement>('scrub').value = String(Math.round(t * 1000));
-  if (t >= 1) $('play').textContent = '▶';
+  if (t >= 1) setPlayState($('play'), false);
 };
 
 function update3d() {
@@ -795,11 +891,19 @@ function update3d() {
     });
   });
   view3d.setScene(state.parts, placements, sheets);
-  if (state.autoplayPending && sheets.length) {
-    state.autoplayPending = false;
-    view3d.setProgress(0);
-    setTimeout(() => { view3d.play(); $('play').textContent = '❚❚'; }, 600);
-  }
+  has3dSheets = sheets.length > 0;
+  autoplay3d();
+}
+
+/** Whether the 3D scene has sheets to fly the parts onto. */
+let has3dSheets = false;
+
+/** After a file opens, play the parts-onto-sheets animation the first time the 3D tab is in view. */
+function autoplay3d() {
+  if (!state.autoplayPending || !has3dSheets || state.tab !== '3d') return;
+  state.autoplayPending = false;
+  view3d.setProgress(0);
+  setTimeout(() => { view3d.play(); setPlayState($('play'), true); }, 600);
 }
 
 // ---------------------------------------------------------------------------
@@ -815,6 +919,7 @@ function download(name: string, text: string, type: string) {
 const baseName = () => state.fileName.replace(/\.(step|stp|dxf)$/i, '') || 'layout';
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+$('cncMachine').innerHTML = Object.entries(MACHINE_LABELS).map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
 initTips();
 bindControls();
 syncControls();
