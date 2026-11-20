@@ -126,6 +126,14 @@ input:focus-visible, select:focus-visible, .seg button:focus-visible { outline-o
 .brand .credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .brand .credit a:hover { color: var(--ink); }
 
+/* Plain-language disclaimer at the foot of the sidebar; collapsed until opened. */
+.legal { margin-top: var(--sp-4); font-size: var(--fs-xs); color: var(--muted); }
+.legal summary { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.legal summary:hover { color: var(--ink); }
+.legal p { margin: var(--sp-2) 0 0; line-height: 1.45; }
+.legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.legal a:hover { color: var(--ink); }
+
 section { margin-top: var(--sp-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
 /* Section label: the small caps heading in the sidebar. */
 section h2 { margin: 0; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
