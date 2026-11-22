@@ -31,7 +31,7 @@ export type Part = {
   w: number;
   h: number;
   area: number;
-  /** Looks like a flat sheet part (thin relative to its footprint). */
+  /** Cut from sheet stock: thin enough (≤ 40 mm) to be a flat part, whatever its width. */
   isPanel: boolean;
 };
 
@@ -167,7 +167,7 @@ export function buildPart(id: number, name: string, mesh: MeshData): Part {
     frame: { u, v, n, nMin },
     base, regions, hull, pockets, w, h,
     area: regions.reduce((s, r) => s + regionArea(r), 0),
-    isPanel: thickness <= 40 && thickness * 4 <= Math.min(w, h),
+    isPanel: thickness <= 40,
   };
 }
 
