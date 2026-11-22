@@ -100,16 +100,39 @@ const getOcct = () => (occtPromise ??= occtimportjs({ locateFile: () => occtWasm
 /** The open DXF's text, kept so thickness or units can be changed without reopening it. */
 let dxfText: string | null = null;
 
-/** Show the mascot and a message in the main pane while a file opens or a layout packs. */
-function showLoading(text: string) {
-  $('packingText').textContent = text;
-  $('empty').hidden = true;
-  $('packing').hidden = false;
+// A scrim with the animated logo for work slow enough to notice (same as fuzzyspiral). It appears
+// only after a short delay, so quick updates never flash it. "stage" covers the main area and
+// leaves clicks through; "screen" covers everything while a file is read.
+type Work = { label: string; scope: 'stage' | 'screen'; shown: boolean };
+const works = new Set<Work>();
+function startWork(label: string, scope: Work['scope']) {
+  const work: Work = { label, scope, shown: false };
+  works.add(work);
+  setTimeout(() => { if (works.has(work)) { work.shown = true; renderScrim(); } }, scope === 'screen' ? 150 : 300);
+  return () => { works.delete(work); renderScrim(); };
 }
+function renderScrim() {
+  const shown = [...works].filter((w) => w.shown);
+  const top = shown.find((w) => w.scope === 'screen') ?? shown[0];
+  const scrim = $('scrim');
+  scrim.hidden = !top;
+  if (!top) return;
+  // The logo videos were hidden when the page loaded, so autoplay never started them.
+  for (const v of scrim.querySelectorAll('video')) v.play().catch(() => {});
+  $('scrimLabel').textContent = top.label;
+  scrim.classList.toggle('screen', top.scope === 'screen');
+  if (top.scope === 'stage') {
+    const r = document.querySelector('.main')!.getBoundingClientRect();
+    Object.assign(scrim.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+  } else {
+    Object.assign(scrim.style, { left: '', top: '', width: '', height: '' });
+  }
+}
+let packWork: (() => void) | null = null;
 
 async function openFile(file: File) {
   setStatus(`Reading ${file.name}…`, true);
-  if (state.tab === 'sheets') showLoading(`Reading ${file.name}…`);
+  const endRead = startWork(`Reading ${file.name}…`, 'screen');
   // A file that fails to open must leave the previous one working.
   const prev = { text: dxfText, name: state.fileName };
   try {
@@ -128,10 +151,11 @@ async function openFile(file: File) {
     dxfText = prev.text;
     state.fileName = prev.name;
     showError(`Couldn't open ${file.name}. ${(err as Error).message}`);
-    $('packing').hidden = true;
     $('empty').hidden = !!state.parts.length;
     updateRepack();
     if (!state.parts.length) setStatus('');
+  } finally {
+    endRead();
   }
 }
 
@@ -273,24 +297,26 @@ function repack() {
     return;
   }
   worker?.terminate();
+  packWork?.();
   worker = new Worker(new URL('./nest.worker.ts', import.meta.url), { type: 'module' });
   const id = ++jobId;
   const n = groups.reduce((a, g) => a + g.items.length, 0);
   state.busy = true;
   $('staleBar').hidden = true;
-  if (!state.shown && state.tab === 'sheets') showLoading(`Packing ${n} parts…`);
-  else $('packing').hidden = true;
+  packWork = startWork(`Packing ${n} ${n === 1 ? 'part' : 'parts'}…`, 'stage');
   setStatus(`Packing ${n} parts…`, true);
   worker.onmessage = (e: MessageEvent<{ id: number; results: NestResult[][] }>) => {
     if (e.data.id !== id) return;
     state.busy = false;
+    packWork?.();
+    packWork = null;
     jobs.forEach((s, j) => state.cache.set(packKey(s), { settings: s, groups: groups.map((g, i) => ({ ...g, result: e.data.results[j][i] })) }));
     // Show the current settings if they were packed; if they changed mid-pack, show what was packed.
     state.shown = state.cache.get(packKey(nestSettings())) ?? state.cache.get(packKey(jobs[0]))!;
     render();
     updateRepack();
   };
-  worker.onerror = (e) => { state.busy = false; setStatus(`Packing failed: ${e.message}`); updateRepack(); };
+  worker.onerror = (e) => { state.busy = false; packWork?.(); packWork = null; setStatus(`Packing failed: ${e.message}`); updateRepack(); };
   const req: NestRequest = { id, jobs: jobs.map((settings) => ({ settings, groups: groups.map((g) => g.items) })) };
   worker.postMessage(req);
 }
@@ -654,7 +680,6 @@ function highlight(partId: number, on: boolean) {
 
 function render() {
   const s = view();
-  $('packing').hidden = true;
   // What the shown layout was packed for, which can lag the workflow until it re-packs.
   const cncView = s.mode === 'optimal';
   $('empty').hidden = !!state.parts.length;

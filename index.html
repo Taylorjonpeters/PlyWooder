@@ -206,7 +206,7 @@
             <h2>Open a STEP or DXF file to get started</h2>
             <p>Each solid or closed outline becomes a part.</p>
           </div>
-          <div class="empty loading" id="packing" hidden role="status"><img class="mascot" src="/src/assets/mascot.webp" alt="" width="112" height="112" /><h2 id="packingText">Packing your parts…</h2></div>
+
           <div class="notice info" id="skippedNote" hidden></div>
           <div id="sheets"></div>
         </div>
@@ -262,6 +262,13 @@
             <span>Tight nesting for your machine and bit, plus G-code.</span>
           </button>
         </div>
+      </div>
+    </div>
+    <div id="scrim" class="scrim" hidden role="status" aria-live="polite">
+      <div class="scrim-box">
+        <video class="mascot mascot-on-light" src="/src/assets/mascot.webm" width="112" height="112" autoplay loop muted playsinline aria-hidden="true"></video>
+        <video class="mascot mascot-on-dark" src="/src/assets/mascot-light.webm" width="112" height="112" autoplay loop muted playsinline aria-hidden="true"></video>
+        <span class="spinner" aria-hidden="true"></span><span id="scrimLabel"></span>
       </div>
     </div>
     <div class="dropOverlay" id="dropOverlay">Drop a STEP or DXF file</div>

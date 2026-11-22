@@ -5,6 +5,7 @@
    --------------------------------------------------------------------------- */
 :root {
   /* Colour */
+  --scrim: rgb(244 241 236 / 0.88);
   --bg: #f4f1ec;
   --panel: #fffdfa;
   --ink: #2a241c;
@@ -58,6 +59,7 @@
     --panel: #24211c;
     --ink: #eee6da;
     --muted: #a39887;
+    --scrim: rgb(27 25 21 / 0.88);
     --line: #3a352d;
     --field-bg: #1b1915;
     --field-line: #5b5346;
@@ -80,7 +82,7 @@
   }
 }
 :root[data-theme='dark'] {
-  --bg: #1b1915; --panel: #24211c; --ink: #eee6da; --muted: #a39887; --line: #3a352d;
+  --bg: #1b1915; --panel: #24211c; --ink: #eee6da; --muted: #a39887; --line: #3a352d; --scrim: rgb(27 25 21 / 0.88);
   --field-bg: #1b1915; --field-line: #5b5346;
   --accent: #e08a3c; --accent-ink: #1b1915; --wood: #c9a96e; --wood-edge: #f0d9a8;
   --sheet: #3a3226; --sheet-edge: #6f5f45; --cut: #ff7a63; --pocket: #6fd394; --guide: #c98bf0; --shared: #4fd1c5;
@@ -219,7 +221,22 @@ details.collapse > .parts { margin-top: var(--sp-2); }
 #skippedNote { margin: 0 0 var(--sp-4); }
 .empty { max-width: 460px; margin: 12vh auto; text-align: center; color: var(--muted); }
 .empty h2 { color: var(--ink); font-size: var(--fs-xl); }
-.loading .mascot { display: block; width: 112px; height: 112px; margin: 0 auto var(--sp-2); }
+/* Loading scrim. Over the main area it lets clicks through, so nothing is locked while a layout
+   packs; over the whole screen it blocks input while a file is read. */
+.scrim { position: fixed; z-index: 30; display: grid; place-items: center; background: var(--scrim); pointer-events: none; }
+.scrim.screen { inset: 0; pointer-events: auto; }
+.scrim-box { display: grid; justify-items: center; gap: var(--sp-2); text-align: center; font-family: var(--font-head); font-size: var(--fs-xl); color: var(--ink); }
+.scrim-box .mascot { width: 112px; height: 112px; flex: none; object-fit: contain; }
+.scrim-box .spinner { display: none; width: 18px; height: 18px; margin: 0 auto; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+.mascot-on-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .mascot-on-light { display: none; }
+  :root:not([data-theme='light']) .mascot-on-dark { display: block; }
+}
+:root[data-theme='dark'] .mascot-on-light { display: none; }
+:root[data-theme='dark'] .mascot-on-dark { display: block; }
+/* Reduced motion: no animated logo, a slow spinner instead. */
+@media (prefers-reduced-motion: reduce) { .scrim-box .mascot { display: none !important; } .scrim-box .spinner { display: block; animation-duration: 2.4s; } }
 
 /* Title: the heading above a group of cards in the main area. */
 .group { margin-bottom: 28px; }
