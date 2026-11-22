@@ -10,7 +10,7 @@ import { throughCuts, type ThroughCut, type ThroughPlan } from './through';
 import type { NestRequest, SuggestJob } from './nest.worker';
 import type { SuggestResult } from './suggest';
 import { toDxf, toSvg, type DxfSheet } from './dxf';
-import { CAM_DEFAULTS, DEFAULT_TOOLS, MACHINE_LABELS, STUDIO_TABLES, currentTable, gordixFit, type CamSettings } from './cam';
+import { CAM_DEFAULTS, DEFAULT_LIBRARY, DEFAULT_TOOLS, MACHINE_LABELS, STUDIO_TABLES, currentTable, gordixFit, type CamSettings } from './cam';
 import { CamWorkspace, type CamSheetRef } from './camView';
 import { initTips } from './tip';
 import { setPlayState } from './icons';
@@ -60,6 +60,9 @@ function camSettings(saved?: Partial<CamSettings>): CamSettings {
   return {
     ...CAM_DEFAULTS, ...saved, tools: tools.map((t) => ({ ...t })), stockActual: { ...saved?.stockActual },
     tables: (saved?.tables ?? []).map((t) => ({ ...t })),
+    library: saved?.library?.bits
+      ? { folders: [...(saved.library.folders ?? [])], bits: saved.library.bits.map((b) => ({ ...b })) }
+      : DEFAULT_LIBRARY(),
   };
 }
 

@@ -414,3 +414,38 @@ i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: no
 .suggestRow select { width: auto; flex: 1 1 auto; min-width: 0; }
 #cncSuggest { white-space: nowrap; flex: none; padding: 0 10px; }
 #cncSuggest:disabled { cursor: progress; }
+
+/* Bits: a preset bit is locked and shows a summary; a custom bit shows its fields. */
+.toolName:has(.presetInfo) { grid-template-columns: 1fr auto var(--control-h-sm); align-items: center; }
+.toolName:has([data-save]) { grid-template-columns: 1fr var(--control-h-sm) var(--control-h-sm); }
+.presetInfo { display: grid; min-width: 0; }
+.presetInfo small { color: var(--muted); font-size: var(--fs-xs); }
+.toolRow.preset { grid-template-columns: 1fr; }
+
+/* Modal dialogs: the bit library. */
+.modal { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: var(--sp-4); background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(3px); }
+.modalBox { display: flex; flex-direction: column; width: min(880px, 100%); max-height: min(720px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: 0 20px 50px rgb(0 0 0 / 0.25); overflow: hidden; }
+.modalHead, .modalFoot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); }
+.modalHead { border-bottom: 1px solid var(--line); }
+.modalFoot { border-top: 1px solid var(--line); }
+.modalHead h2 { margin: 0; font-size: var(--fs-lg); }
+.modalFoot span, .libHead span { display: flex; gap: var(--sp-2); }
+.libBody { display: grid; grid-template-columns: 200px 1fr; min-height: 0; flex: 1; }
+.libFolders { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); border-right: 1px solid var(--line); overflow-y: auto; }
+.libFolder { display: flex; justify-content: space-between; text-align: left; padding: 6px var(--sp-2); border: 1px solid transparent; border-radius: var(--r-ctl); background: none; color: var(--ink); cursor: pointer; }
+.libFolder small { color: var(--muted); }
+.libFolder:hover { background: var(--bg); }
+.libFolder.on { background: var(--bg); border-color: var(--field-line); font-weight: 600; }
+.libMain { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); overflow-y: auto; min-width: 0; }
+.libHead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.libHead h3, .libEdit h3 { margin: 0; font-size: var(--fs-md); }
+.libList { display: grid; gap: var(--sp-1); }
+.libRow { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-ctl); cursor: pointer; }
+.libRow:hover { border-color: var(--field-line); }
+.libRow.on { border-color: var(--accent); }
+.libInfo { display: grid; min-width: 0; }
+.libInfo small { color: var(--muted); font-size: var(--fs-xs); }
+.libEdit { display: grid; gap: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.libGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); }
+.libEdit textarea { width: 100%; padding: var(--sp-2); border: 1px solid var(--field-line); border-radius: var(--r-ctl); background: var(--field-bg); font: inherit; }
+@media (max-width: 640px) { .libBody { grid-template-columns: 1fr; } .libFolders { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); } .libGrid { grid-template-columns: 1fr 1fr; } }

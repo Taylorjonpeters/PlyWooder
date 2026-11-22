@@ -3,7 +3,7 @@
  * generated markup; static markup can use `<svg class="ico"><use href="#i-play"/></svg>` directly.
  * They draw in currentColor and scale with the text around them.
  */
-export type IconName = 'play' | 'pause' | 'close' | 'arrow' | 'plus';
+export type IconName = 'play' | 'pause' | 'close' | 'arrow' | 'plus' | 'save';
 
 export const icon = (name: IconName) => `<svg class="ico" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 

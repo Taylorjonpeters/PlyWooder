@@ -107,7 +107,8 @@ export function writeGcode(file: CamFile, ctx: WriteContext): string {
   const safe = Math.max(0.5, cfg.safeZ) + lift;
   line(`G0 Z${n(safe)}`);
   line(`G0 X0 Y0${rapidF()}`);
-  if (m.spindle && cfg.rpm > 0) line(`M3 S${Math.round(cfg.rpm)}`);
+  const rpm = file.tool?.rpm || cfg.rpm; // the bit's own speed wins over the machine setting
+  if (m.spindle && rpm > 0) line(`M3 S${Math.round(rpm)}`);
   let cx = 0, cy = 0, cz = safe;
   for (const mv of file.moves) {
     const { x, y } = at(mv);
@@ -124,7 +125,7 @@ export function writeGcode(file: CamFile, ctx: WriteContext): string {
     cx = x; cy = y; cz = z;
   }
   if (cz < safe - 1e-6) line(`G0 Z${n(safe)}`);
-  if (m.spindle && cfg.rpm > 0) line('M5');
+  if (m.spindle && rpm > 0) line('M5');
   line(`G0 X0 Y0${rapidF()}`);
   for (const e of m.end) line(e);
   return out.join('\n') + '\n';

@@ -29,7 +29,29 @@ export type Tool = {
   plungeFeed: number;
   /** Max depth per pass, mm. */
   depthPerPass: number;
+  /** Library details, as in a Fusion tool library. All optional. */
+  manufacturer?: string;
+  /** Manufacturer's part number. */
+  partNo?: string;
+  kind?: 'flat' | 'vbit';
+  flutes?: number;
+  /** Cutting (flute) length, mm. */
+  fluteLength?: number;
+  shank?: number;
+  /** Overall length, mm. */
+  overall?: number;
+  /** Included angle of a V bit, degrees. */
+  tipAngle?: number;
+  /** Spindle speed to run this bit at, rpm. 0 or absent uses the machine setting. */
+  rpm?: number;
+  notes?: string;
+  /** Chosen from the library, so the job shows it locked. Absent means a custom bit. */
+  preset?: boolean;
 };
+
+/** A bit stored in the library, filed under a folder ('' is unfiled). */
+export type LibraryBit = Tool & { folder: string };
+export type BitLibrary = { folders: string[]; bits: LibraryBit[] };
 
 export type MachineId = 'gordix' | 'grbl';
 
@@ -44,6 +66,8 @@ export type CamSettings = {
   /** Spindle speed for GRBL machines (M3). 0 leaves it out. */
   rpm: number;
   tools: Tool[];
+  /** Saved bits, kept between jobs. */
+  library: BitLibrary;
   pocketTool: string;
   holeTool: string;
   outlineTool: string;
@@ -75,10 +99,28 @@ export type CamSettings = {
   airCut: number;
 };
 
-export const DEFAULT_TOOLS: Tool[] = [
-  { id: 'flat-6.35', name: '1/4" flat end mill', diameter: 6.35, feed: 1000, plungeFeed: 300, depthPerPass: 3 },
-  { id: 'flat-3.175', name: '1/8" flat end mill', diameter: 3.175, feed: 800, plungeFeed: 250, depthPerPass: 1.5 },
-];
+export const DEFAULT_TOOLS: Tool[] = ([
+  {
+    id: 'sed0602-60l', name: 'SED0602 (60L)', diameter: 6, feed: 1000, plungeFeed: 300, depthPerPass: 3,
+    kind: 'flat', flutes: 2, fluteLength: 20, shank: 6, overall: 60, rpm: 12000,
+    notes: '6 × 20 × 6 × 2T × 60L. Starting feeds: adjust for your wood.',
+  },
+  {
+    id: 'iap0901-zrn', name: 'IAP0901 ZRN', diameter: 3, feed: 800, plungeFeed: 250, depthPerPass: 1.5,
+    kind: 'flat', flutes: 1, fluteLength: 8, shank: 6, overall: 50, rpm: 12000,
+    notes: '3 × 8 × 6 × 1T × 50L. Starting feeds: adjust for your wood.',
+  },
+  {
+    id: 'icsmc090-0609', name: 'ICSMC090-0609 (V bit)', diameter: 6, feed: 800, plungeFeed: 250, depthPerPass: 2,
+    kind: 'vbit', flutes: 3, fluteLength: 8, shank: 6, overall: 50, tipAngle: 60, rpm: 12000,
+    notes: '6 × 8 × 6 × 3T × 50L, 60° V bit. Starting feeds: adjust for your wood.',
+  },
+] as Tool[]).map((t) => ({ ...t, preset: true }));
+
+export const DEFAULT_LIBRARY = (): BitLibrary => ({
+  folders: ['End mills', 'V bits'],
+  bits: DEFAULT_TOOLS.map(({ preset: _p, ...t }) => ({ ...t, folder: t.kind === 'vbit' ? 'V bits' : 'End mills' })),
+});
 
 /**
  * Feeds, safe height and tab size follow GORDIX Studio's defaults; depth per pass follows the GORDIX
@@ -87,7 +129,7 @@ export const DEFAULT_TOOLS: Tool[] = [
  */
 export const CAM_DEFAULTS: CamSettings = {
   machine: 'gordix', origin: 'center', tables: [], tableId: 1, tablesFile: '', rpm: 12000,
-  tools: DEFAULT_TOOLS, pocketTool: 'flat-6.35', holeTool: 'flat-6.35', outlineTool: 'flat-6.35',
+  tools: DEFAULT_TOOLS, library: DEFAULT_LIBRARY(), pocketTool: 'sed0602-60l', holeTool: 'sed0602-60l', outlineTool: 'sed0602-60l',
   stockActual: {}, fitAllowance: 0, dogbones: false,
   throughExtra: 0.5, safeZ: 2, stepover: 0.4, ramp: false, rampAngle: 10,
   tabs: true, tabsOnHoles: true, tabHeight: 3, tabWidth: 5, tabSpacing: 400,

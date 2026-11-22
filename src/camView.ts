@@ -4,6 +4,7 @@ import {
 } from './cam';
 import { writeGcode, estimateSeconds, cutLength, MACHINES } from './gcode';
 import { tip } from './tip';
+import { BitLibraryModal } from './bitLibraryView';
 import { icon, setPlayState } from './icons';
 
 /** One sheet of the current layout, as the workspace sees it. */
@@ -56,6 +57,11 @@ export class CamWorkspace {
   private playing = false;
   private planTimer = 0;
   private $ = (id: string) => document.getElementById(id)!;
+  private library = new BitLibraryModal({
+    settings: () => this.host.settings(),
+    save: () => this.host.save(),
+    jobChanged: () => { this.host.save(); this.renderSettings(); this.schedulePlan(); },
+  });
 
   constructor(private host: CamHost) {
     const strip = this.$('camSheet');
@@ -319,7 +325,25 @@ export class CamWorkspace {
   // Settings
   // -------------------------------------------------------------------------
 
+  private bitSummary(t: Tool) {
+    return [`Ø${num(t.diameter)} mm`, t.kind === 'vbit' && t.tipAngle ? `${num(t.tipAngle)}° V` : '', t.flutes ? `${t.flutes}T` : '',
+      t.rpm ? `${t.rpm} rpm` : '', `${num(t.feed)} / ${num(t.plungeFeed)} mm/min`, `${num(t.depthPerPass)} mm per pass`].filter(Boolean).join(' · ');
+  }
+
+  /** Preset bits follow the library: refresh their copies, or turn them custom if the library dropped them. */
+  private syncPresets() {
+    const c = this.host.settings();
+    c.tools = c.tools.map((t) => {
+      if (!t.preset) return t;
+      const b = c.library.bits.find((x) => x.id === t.id);
+      if (!b) { const { preset: _p, ...rest } = t; return rest; }
+      const { folder: _f, ...rest } = b;
+      return { ...rest, preset: true };
+    });
+  }
+
   private renderSettings() {
+    this.syncPresets();
     const c = this.host.settings();
     const sheets = this.host.sheets();
     const kerfs = [...new Set(sheets.map((s) => s.sheet.kerf))];
@@ -367,9 +391,16 @@ export class CamWorkspace {
       <section>
         <h2>Bits ${tip('Feeds in mm/min. GORDIX suggests 3–5 mm per pass in wood.')}</h2>
         <div class="tools">
-          ${c.tools.map((t, i) => `<div class="toolRow">
+          ${c.tools.map((t, i) => t.preset ? `<div class="toolRow preset">
+            <div class="toolName">
+              <div class="presetInfo"><b>${esc(t.name)}</b><small>${esc(this.bitSummary(t))}</small></div>
+              <button class="ghost" data-unlock="${i}" data-tip="Make an editable copy of this bit">Customize</button>
+              <button class="ghost x" data-del="${i}" data-tip="Remove this bit" aria-label="Remove ${esc(t.name)}" ${c.tools.length < 2 ? 'disabled' : ''}>${icon('close')}</button>
+            </div>
+          </div>` : `<div class="toolRow">
             <div class="toolName">
               <input data-tool="${i}" data-f="name" value="${esc(t.name)}" aria-label="Bit name"/>
+              <button class="ghost x" data-save="${i}" data-tip="${c.library.bits.some((b) => b.id === t.id) ? 'Update this bit in the library and lock it' : 'Save this bit to the library and lock it'}" aria-label="Save ${esc(t.name)} to the library">${icon('save')}</button>
               <button class="ghost x" data-del="${i}" data-tip="Remove this bit" aria-label="Remove ${esc(t.name)}" ${c.tools.length < 2 ? 'disabled' : ''}>${icon('close')}</button>
             </div>
             <label><span>Ø (mm)</span><input type="number" data-tool="${i}" data-f="diameter" value="${t.diameter}" min="0.1" step="any"/></label>
@@ -378,7 +409,10 @@ export class CamWorkspace {
             <label><span>Per pass (mm)</span><input type="number" data-tool="${i}" data-f="depthPerPass" value="${t.depthPerPass}" min="0.1" step="any"/></label>
           </div>`).join('')}
         </div>
-        <button class="ghost" id="camAddTool" type="button">${icon('plus')} Add bit</button>
+        <div class="pair">
+          <button class="ghost" id="camAddTool" type="button">${icon('plus')} Custom bit</button>
+          <button class="ghost" id="camLibrary" type="button" data-tip="Pick a preset bit from the library, or manage the library">Bit library…</button>
+        </div>
       </section>
 
       <section>
@@ -502,9 +536,26 @@ export class CamWorkspace {
         c.tablesFile = '';
         if (!STUDIO_TABLES.some((t) => t.id === c.tableId)) c.tableId = 1;
         changed(true);
+      } else if (el.id === 'camLibrary') {
+        this.library.open();
       } else if (el.id === 'camAddTool') {
-        const base = c.tools.at(-1) ?? DEFAULT_TOOLS[0];
+        const { preset: _p, ...base } = c.tools.at(-1) ?? DEFAULT_TOOLS[0];
         c.tools.push({ ...base, id: `bit-${Date.now().toString(36)}`, name: 'New bit' });
+        changed(true);
+      } else if (el.dataset.unlock !== undefined) {
+        const t = c.tools[Number(el.dataset.unlock)];
+        const { preset: _p, ...rest } = t;
+        const id = `bit-${Date.now().toString(36)}`;
+        c.tools[Number(el.dataset.unlock)] = { ...rest, id, name: `${t.name} (custom)` };
+        for (const k of ['pocketTool', 'holeTool', 'outlineTool'] as const) if (c[k] === t.id) c[k] = id; // operations keep using it
+        changed(true);
+      } else if (el.dataset.save !== undefined) {
+        const i = Number(el.dataset.save);
+        const { preset: _p, ...t } = c.tools[i];
+        const at = c.library.bits.findIndex((b) => b.id === t.id);
+        if (at >= 0) c.library.bits[at] = { ...t, folder: c.library.bits[at].folder };
+        else c.library.bits.push({ ...t, folder: '' });
+        c.tools[i] = { ...t, preset: true }; // the job's bit becomes the saved one, locked
         changed(true);
       } else if (el.dataset.del !== undefined && c.tools.length > 1) {
         const [gone] = c.tools.splice(Number(el.dataset.del), 1);
