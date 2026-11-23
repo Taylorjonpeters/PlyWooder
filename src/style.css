@@ -440,10 +440,10 @@ i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: no
 .tip:hover, .tip:focus-visible { border-color: var(--accent); color: var(--accent); }
 .tipBubble { position: fixed; z-index: 50; max-width: 260px; padding: 7px 10px; border-radius: var(--r-ctl); background: var(--ink); color: var(--bg); font-size: var(--fs-xs); line-height: 1.4; pointer-events: none; box-shadow: 0 6px 18px rgb(0 0 0 / 0.2); }
 
-.suggestRow { display: flex; align-items: center; gap: var(--sp-2); }
-.suggestRow label { display: flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; }
-.suggestRow .tip { flex: none; }
-.suggestRow select { width: auto; flex: 1 1 auto; min-width: 0; }
+/* Suggest size box: stock and margin side by side with labels above, the search button at the row's end. */
+.suggestGrid { display: grid; grid-template-columns: minmax(0, 1fr) 100px auto; gap: var(--sp-2); align-items: end; }
+.suggestGrid label { min-width: 0; }
+.suggestGrid .fieldLabel { white-space: nowrap; }
 /* Find the smallest size: a square icon button with the Suggest size wand, which pulses while it searches. */
 .iconBtn { flex: none; width: var(--control-h); padding: 0; }
 .iconBtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
@@ -508,14 +508,14 @@ i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: no
 .areaChip.on { border-color: var(--accent); color: var(--accent); }
 #cncUseTable.on { cursor: default; }
 /* Suggest size opens this box under the chips: the stock to cut from, the search, and its result. */
-.suggestBox { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-2); border: 1px solid var(--field-line); border-radius: var(--r-ctl); background: var(--bg); }
+.suggestBox { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--field-line); border-radius: var(--r-ctl); background: var(--bg); }
 /* The Suggest size wand: a stroked stick with filled sparkles, so the stars read at 13–16 px. */
 svg.wand .spark { fill: currentColor; stroke: none; }
 /* Units: a small mm / in switch at the right of the tab bar, and the same choice in the first-visit chooser. */
 .unitSeg { flex: none; margin-left: var(--sp-3); }
 .unitSeg button { min-height: 26px; padding: 0 10px; font-size: var(--fs-xs); }
 .chooserUnits { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-3); margin-top: var(--sp-4); font-size: var(--fs-sm); color: var(--muted); }
-.chooserUnits .seg { width: 160px; }
+.chooserUnits .seg { width: 210px; }
 /* Tooltip drawings (tipArt.ts): line art in the bubble's own colours, with the accent for the bit. */
 .tipBubble.hasArt { width: 260px; max-width: calc(100vw - 16px); display: grid; gap: 6px; }
 .tipArt { display: block; width: 100%; height: auto; }
@@ -529,3 +529,6 @@ svg.wand .spark { fill: currentColor; stroke: none; }
 .sectionHead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .sectionHead h2 { margin: 0; }
 .ghost.small { min-height: 26px; padding: 0 var(--sp-2); font-size: var(--fs-xs); }
+/* G-code tab: the stock piece this sheet needs, as a small badge beside the summary. */
+.stockBadge { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--field-line); border-radius: 999px; background: var(--field-bg); color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; cursor: help; }
+.stockBadge b { color: var(--ink); font-weight: 600; }

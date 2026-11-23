@@ -6,6 +6,7 @@ import { writeGcode, writeBoundsGcode, estimateSeconds, cutLength, MACHINES } fr
 import { tip } from './tip';
 import { BitLibraryModal } from './bitLibraryView';
 import { icon, setPlayState } from './icons';
+import { fmtLen, type Units } from './units';
 
 /** One sheet of the current layout, as the workspace sees it. */
 /**
@@ -19,6 +20,8 @@ export type CamHost = {
   /** The layout on screen is out of date, so nothing should be downloaded from it. */
   stale: () => boolean;
   settings: () => CamSettings;
+  /** Display units for lengths shown on this tab. The G-code itself is always in mm. */
+  units: () => Units;
   save: () => void;
   /** The layout's sheet already is the selected table's work area. */
   /** Go back to step 2, where the machine, table and sheet are set. */
@@ -56,6 +59,13 @@ export class CamWorkspace {
   private playing = false;
   private planTimer = 0;
   private $ = (id: string) => document.getElementById(id)!;
+  /** A length for display: whole fractions of an inch, or mm. */
+  private len = (mm: number, unit = true) => fmtLen(mm, this.host.units(), unit);
+  /** A depth for display, to the thousandth in inches, since Z needs more than 1/16". */
+  private depth = (mm: number) => {
+    const u = this.host.units();
+    return u === 'in' ? `${(mm / 25.4).toFixed(3)}"` : u === 'cm' ? `${num(mm / 10)} cm` : `${num(mm)} mm`;
+  };
   private library = new BitLibraryModal({
     settings: () => this.host.settings(),
     save: () => this.host.save(),
@@ -120,7 +130,7 @@ export class CamWorkspace {
       const n = shapes.length;
       html += `<button class="sheetChip" role="tab" type="button" data-sheet="${i}">
         <svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><rect class="sheetRect" width="${w}" height="${h}"/><path class="mini" d="${path}"/></svg>
-        <b>${esc(ref.name)}</b><small>${n} ${n === 1 ? 'part' : 'parts'}${groups.size > 1 ? '' : ` · ${num(ref.sheet.thickness)} mm`}</small>
+        <b>${esc(ref.name)}</b><small>${n} ${n === 1 ? 'part' : 'parts'}${groups.size > 1 ? '' : ` · ${this.len(ref.sheet.thickness)}`}</small>
       </button>`;
     });
     this.$('camSheet').innerHTML = html;
@@ -200,8 +210,13 @@ export class CamWorkspace {
     const times = job.files.map((f) => estimateSeconds(f.moves, cfg.machine, centre));
     const total = times.reduce((a, b) => a + b, 0);
     this.$('camSummary').innerHTML = job.files.length
-      ? `<b>${job.files.length}</b> file${job.files.length > 1 ? 's' : ''} · est. run time <b>${fmtRun(total)}</b> · stock ${num(job.stock)} mm, cut to Z−${num(job.cutDepth)} mm`
+      ? `<b>${job.files.length}</b> file${job.files.length > 1 ? 's' : ''} · est. run time <b>${fmtRun(total)}</b> · cut to Z−${this.depth(job.cutDepth)}`
       : 'Nothing to cut on this sheet.';
+    // The piece to put on the machine: the sheet size and the thickness the depths use.
+    const stock = this.$('camStock');
+    stock.hidden = false;
+    stock.innerHTML = `Stock <b>${this.len(ref.sheet.w, false)} × ${this.len(ref.sheet.h, false)} × ${this.len(job.stock)}</b>`;
+    stock.dataset.tip = `The piece to put on the machine for this sheet: X length × Y width × thickness. The thickness is your measured one if you set it under Fit.`;
     const warn = this.$('camWarn');
     warn.hidden = !job.warnings.length;
     warn.innerHTML = job.warnings.map(esc).join('<br>');
@@ -210,7 +225,7 @@ export class CamWorkspace {
       const what = f.kind === 'laser' ? 'Laser module' : `${esc(f.tool!.name)} · ${num(f.tool!.diameter)} mm`;
       return `<div class="camFile">
         <span class="n">${i + 1}</span>
-        <div><b>${what}</b><small class="ops">${f.ops.map((o) => `<span><i class="op ${o}"></i>${OP_NAME[o]}</span>`).join('')}</small><small>${fmtRun(times[i])} · ${(cutLength(f.moves) / 1000).toFixed(1)} m cut</small></div>
+        <div><b>${what}</b><small class="ops">${f.ops.map((o) => `<span><i class="op ${o}"></i>${OP_NAME[o]}</span>`).join('')}</small><small>${fmtRun(times[i])} · ${this.host.units() === 'in' ? `${(cutLength(f.moves) / 304.8).toFixed(0)} ft` : `${(cutLength(f.moves) / 1000).toFixed(1)} m`} of cutting</small></div>
         <button class="ghost" data-dl="${i}">Download</button>
       </div>`;
     }).join('');
@@ -328,7 +343,7 @@ export class CamWorkspace {
     }
     this.$('camReadout').textContent = full
       ? `${this.timeline.length} moves · ${fmtTime(total)}`
-      : `File ${cur.file + 1} · ${OP_NAME[cur.m.op]} · Z ${num(cur.m.z)} mm · ${fmtTime(cur.t)} / ${fmtTime(total)}`;
+      : `File ${cur.file + 1} · ${OP_NAME[cur.m.op]} · Z ${cur.m.z < 0 ? '−' : ''}${this.depth(Math.abs(cur.m.z))} · ${fmtTime(cur.t)} / ${fmtTime(total)}`;
   }
 
   private togglePlay() {
@@ -396,9 +411,9 @@ export class CamWorkspace {
       <section>
         <div class="sectionHead">
           <h2>Job</h2>
-          <button class="ghost small" id="camToLayout" type="button" data-tip="The machine, table and sheet are set in step 2, Layout">Change in Layout</button>
+          <button class="ghost small" id="camToLayout" type="button">Change in Layout</button>
         </div>
-        <p class="hint jobSummary"><b>${gordix ? `GORDIX · Table ${table.id}` : MACHINE_LABELS.grbl}</b>${sheet0 ? ` · ${num(sheet0.w)} × ${num(sheet0.h)} mm sheet` : ''}</p>
+        <p class="hint jobSummary"><b>${gordix ? `GORDIX · Table ${table.id}` : MACHINE_LABELS.grbl}</b>${sheet0 ? ` · ${this.len(sheet0.w, false)} × ${this.len(sheet0.h)} sheet` : ''}</p>
         ${gordix && fit.rotate ? `<p class="hint">Sheet turned 90° ${tip("This table's X side (S) is its short one, so the G-code runs the sheet's long side along side W.")}</p>` : ''}
         <label>Origin (X0 Y0)<select data-k="origin">
           <option value="center" ${c.origin === 'center' ? 'selected' : ''}>Centre of the sheet</option>

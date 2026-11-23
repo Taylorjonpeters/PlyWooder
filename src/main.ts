@@ -20,7 +20,9 @@ import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
 
 type Settings = NestSettings & {
-  units: Units; dxfUnits: Units;
+  units: Units;
+  /** DXF export units: DXF files here are mm or inches; cm display exports as mm. */
+  dxfUnits: 'mm' | 'in';
   /** DXF units follow the display units until the user picks them. */
   dxfUnitsExplicit: boolean;
   preset: string; showCuts: boolean; showThrough: boolean;
@@ -33,11 +35,16 @@ type Settings = NestSettings & {
    * sheet and the gap between parts come from here and from the outline bit, not the saw settings.
    * `sheet` is only read from older saved settings, where 'table' meant "use the work area".
    */
-  cnc: { sheet?: 'table' | 'custom'; sheetW: number; sheetH: number; stock: string };
+  cnc: { sheet?: 'table' | 'custom'; sheetW: number; sheetH: number; stock: string;
+    /** Extra stock Suggest size leaves around the parts on every side, mm; unset means the default. */
+    suggestMargin?: number };
   /** Machine, tables, bits and G-code settings, shared by the sidebar and the G-code tab (mm, mm/min). */
   cam: CamSettings;
 };
 type Workflow = 'saw' | 'cnc';
+/** Suggest size's margin, mm: generous by default (2" in inches), so the piece is easy to line up. */
+const suggestMarginMm = (s: { units: Units; cnc: { suggestMargin?: number } }) =>
+  s.cnc.suggestMargin ?? (s.units === 'in' ? 50.8 : 50);
 
 const DEFAULTS: Settings = {
   sheetW: 2438.4, sheetH: 1219.2, preset: '2438.4x1219.2',
@@ -82,6 +89,9 @@ function loadSettings(): Settings {
       merged.cnc.sheetH = f.y * 2;
     }
     delete merged.cnc.sheet;
+    // The margin was briefly a named choice; keep its size.
+    const named = { generous: 50, some: 25, tight: 0 } as Record<string, number>;
+    if (typeof merged.cnc.suggestMargin === 'string') merged.cnc.suggestMargin = named[merged.cnc.suggestMargin];
     return merged;
   } catch { return { ...DEFAULTS, cnc: { ...DEFAULTS.cnc }, cam: camSettings() }; }
 }
@@ -364,7 +374,7 @@ const lenInputs = ['sheetW', 'sheetH', 'edgeMargin', 'kerf', 'errorGap', 'import
 /** Put the current unit after each length field's label, e.g. "Length (mm)". */
 const unitFields = ['sheetW', 'sheetH', 'edgeMargin', 'kerf', 'errorGap', 'importThickness', 'cncW', 'cncH'];
 function labelUnits() {
-  const u = state.settings.units === 'mm' ? 'mm' : 'in';
+  const u = state.settings.units;
   for (const id of unitFields) {
     const input = $<HTMLInputElement>(id);
     const text = [...input.parentElement!.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
@@ -446,7 +456,7 @@ function bindControls() {
   // Packing with hulls keeps parts out of each other's notches, so a shape change re-nests.
   seg('shape', () => settingsChanged());
   const unitsChanged = () => {
-    if (!s.dxfUnitsExplicit) s.dxfUnits = s.units;
+    if (!s.dxfUnitsExplicit) s.dxfUnits = s.units === 'in' ? 'in' : 'mm';
     syncControls(); renderParts(); render(); saveSettings();
   };
   seg('units', unitsChanged);
@@ -565,6 +575,9 @@ function syncWorkflow() {
   $('cncBit').innerHTML = c.tools.map((t) => `<option value="${esc(t.id)}">${esc(t.name)} (${Math.round(t.diameter * 1000) / 1000} mm)</option>`).join('');
   $<HTMLSelectElement>('cncBit').value = outlineBit().id;
   $<HTMLSelectElement>('cncStock').value = s.cnc.stock;
+  const marginIn = $<HTMLInputElement>('cncSuggestMargin');
+  if (document.activeElement !== marginIn) marginIn.value = String(toUnits(suggestMarginMm(s), s.units));
+  $('cncSuggestMarginUnit').textContent = `(${s.units})`;
   $<HTMLButtonElement>('cncSuggest').disabled = suggesting || !state.parts.length;
   $('cncSuggestEmpty').hidden = !!state.parts.length;
   const { w, h } = cncSheetSize();
@@ -587,6 +600,13 @@ function bindCnc() {
   const s = state.settings;
   const changed = () => { $('cncSuggestHint').hidden = true; syncControls(); settingsChanged(); };
   $<HTMLSelectElement>('cncStock').addEventListener('change', (e) => { s.cnc.stock = (e.target as HTMLSelectElement).value; saveSettings(); });
+  $<HTMLInputElement>('cncSuggestMargin').addEventListener('input', (e) => {
+    const v = parseFloat((e.target as HTMLInputElement).value);
+    if (!Number.isFinite(v) || v < 0) return;
+    s.cnc.suggestMargin = fromUnits(v, s.units);
+    saveSettings();
+  });
+  $<HTMLInputElement>('cncSuggestMargin').addEventListener('change', () => { $<HTMLInputElement>('cncSuggestMargin').blur(); syncControls(); });
   $('cncSuggest').addEventListener('click', suggestSize);
   $('cncSuggestToggle').addEventListener('click', () => setSuggestOpen($('cncSuggestBox').hidden));
   $<HTMLSelectElement>('cncMachine').addEventListener('change', (e) => {
@@ -653,29 +673,36 @@ function suggestSize() {
   if (fit) { maxW = Math.min(maxW, fit.x * 2); maxH = Math.min(maxH, fit.y * 2); }
   if (maxH > maxW) [maxW, maxH] = [maxH, maxW];
   const settings = { ...nestSettings(), sheetW: maxW, sheetH: maxH };
+  const extra = suggestMarginMm(s);
   const step = s.units === 'in' ? 12.7 : 10;
   const btn = $<HTMLButtonElement>('cncSuggest');
   const hint = $('cncSuggestHint');
   suggesting = true;
   btn.disabled = true;
   btn.classList.add('busy');
-  hint.textContent = 'Searching…';
-  hint.hidden = false;
+  hint.hidden = true;
+  // The same loading screen as packing, over the main area; packing the new size follows it.
+  const endWork = startWork('Finding the smallest sheet size…', 'stage');
   suggestWorker?.terminate();
   suggestWorker = new Worker(new URL('./nest.worker.ts', import.meta.url), { type: 'module' });
-  const done = () => { suggesting = false; btn.classList.remove('busy'); suggestWorker?.terminate(); suggestWorker = null; syncControls(); };
+  const done = () => { suggesting = false; btn.classList.remove('busy'); endWork(); suggestWorker?.terminate(); suggestWorker = null; syncControls(); };
   suggestWorker.onmessage = (e: MessageEvent<{ progress?: number; suggestion?: SuggestResult }>) => {
-    if (e.data.progress) { hint.textContent = `Searching… ${e.data.progress}`; return; }
+    if (e.data.progress) return;
     const r = e.data.suggestion!;
     done();
-    s.cnc.sheetW = r.w;
-    s.cnc.sheetH = r.h;
+    // Grow the tightest size by the margin on every side, as far as the stock and table allow, and
+    // centre the parts so the slack is even all round. The sheet count found for the tight size holds.
+    const w = Math.min(maxW, r.w + 2 * extra), h = Math.min(maxH, r.h + 2 * extra);
+    const capped = w < r.w + 2 * extra - 0.5 || h < r.h + 2 * extra - 0.5;
+    s.cnc.sheetW = w;
+    s.cnc.sheetH = h;
+    if (extra > 0) s.centerLayout = true;
     const n = r.sheets.reduce((a, b) => a + b, 0);
     const lost = r.unplaced.reduce((a, b) => a + b, 0);
     const stockName = $<HTMLSelectElement>('cncStock').selectedOptions[0]?.text ?? 'stock';
     const limit = fit && (fit.x * 2 < Math.max(sw, sh) || fit.y * 2 < Math.min(sw, sh)) ? `, within the ${fit.x * 2} × ${fit.y * 2} mm the table reaches` : '';
-    hint.innerHTML = `Cut ${n === 1 ? 'one piece' : `${n} pieces`}, <b>${fmtLen(r.w, s.units, false)} × ${fmtLen(r.h, s.units)}</b>, from ${n === 1 ? 'a ' : ''}${esc(stockName)} stock${limit}`
-      + ` · ${(r.fill * 100).toFixed(0)}% used`
+    hint.innerHTML = `Cut ${n === 1 ? 'one piece' : `${n} pieces`}, <b>${fmtLen(w, s.units, false)} × ${fmtLen(h, s.units)}</b>, from ${n === 1 ? 'a ' : ''}${esc(stockName)} stock${limit}`
+      + (extra > 0 ? ` · parts centred with ${capped ? 'up to ' : ''}${fmtLen(extra, s.units)} spare all round` : ` · ${(r.fill * 100).toFixed(0)}% used`)
       + (lost ? ` <b class="warnText">· ${lost} part${lost === 1 ? ' is' : 's are'} too big for it</b>` : '');
     hint.hidden = false;
     syncControls();
@@ -716,6 +743,8 @@ function showTab(tab: Tab) {
 }
 
 function renderParts() {
+  // Unticked parts fade in the 3D view as the boxes change.
+  view3d.setDimmed([...state.choices].filter(([, c]) => !c.include).map(([id]) => id));
   const { units } = state.settings;
   $('partsSection').hidden = !state.parts.length;
   const used = state.parts.filter((p) => state.choices.get(p.id)?.include).length;
@@ -953,7 +982,7 @@ function camSheets(): (CamSheetRef & { gi: number; si: number })[] {
     gi, si,
     label: `${g.thickness} mm stock · sheet ${si + 1} of ${g.result!.sheets.length}`,
     name: `Sheet ${si + 1}`,
-    group: `${g.thickness} mm stock`,
+    group: `${fmtLen(g.thickness, state.settings.units)} stock`,
     fileBase: `${baseName()}_${g.thickness}mm_sheet${si + 1}`,
     sheet: {
       w: s.sheetW, h: s.sheetH, thickness: g.thickness, kerf: s.kerf, edgeMargin: s.edgeMargin,
@@ -966,6 +995,7 @@ const cam = new CamWorkspace({
   sheets: camSheets,
   stale: isStale,
   settings: () => state.settings.cam,
+  units: () => state.settings.units,
   // Only a change to the packing settings touches the layout; other edits just save, so typing in
   // the G-code settings never redraws the panel under the cursor.
   save: () => {

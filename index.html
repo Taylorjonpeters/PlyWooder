@@ -95,18 +95,22 @@
             </button>
           </div>
           <div class="suggestBox" id="cncSuggestBox" hidden>
-            <div class="suggestRow">
-              <label>From <select id="cncStock" aria-label="Stock sheet to cut from">
-                <option value="2438.4x1219.2">4 × 8 ft</option>
-                <option value="2500x1250">2500 × 1250 mm</option>
-                <option value="1525x1525">5 × 5 ft</option>
-                <option value="1219.2x1219.2">4 × 4 ft</option>
-                <option value="1219.2x609.6">2 × 4 ft</option>
-              </select></label>
+            <div class="suggestGrid">
+              <label><span class="fieldLabel">Stock <span class="tip" tabindex="0" role="img" aria-label="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and fills in the sheet size. On the GORDIX it also stays inside what the table reaches." data-tip="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and fills in the sheet size. On the GORDIX it also stays inside what the table reaches.">i</span></span>
+                <select id="cncStock" aria-label="Stock sheet to cut from">
+                  <option value="2438.4x1219.2">4 × 8 ft</option>
+                  <option value="2500x1250">2500 × 1250 mm</option>
+                  <option value="1525x1525">5 × 5 ft</option>
+                  <option value="1219.2x1219.2">4 × 4 ft</option>
+                  <option value="1219.2x609.6">2 × 4 ft</option>
+                </select>
+              </label>
+              <label><span class="fieldLabel">Margin <span id="cncSuggestMarginUnit">(mm)</span> <span class="tip" tabindex="0" role="img" aria-label="Extra stock left around the parts on every side, so the piece doesn't have to sit exactly centred under the machine. The parts are centred on it." data-tip="Extra stock left around the parts on every side, so the piece doesn't have to sit exactly centred under the machine. The parts are centred on it.">i</span></span>
+                <input type="number" id="cncSuggestMargin" min="0" step="any" />
+              </label>
               <button class="ghost iconBtn" id="cncSuggest" type="button" aria-label="Find the smallest size">
                 <svg class="wand" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5L8.5 7.5" /><path class="spark" d="M11.5 1.5Q12 4 14.5 4.5Q12 5 11.5 7.5Q11 5 8.5 4.5Q11 4 11.5 1.5Z" /><path class="spark" d="M5 1.2Q5.3 2.7 6.8 3Q5.3 3.3 5 4.8Q4.7 3.3 3.2 3Q4.7 2.7 5 1.2Z" /><path class="spark" d="M12.5 9.2Q12.75 10.5 14 10.75Q12.75 11 12.5 12.3Q12.25 11 11 10.75Q12.25 10.5 12.5 9.2Z" /></svg>
               </button>
-              <span class="tip" tabindex="0" role="img" aria-label="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and fills in the sheet size. On the GORDIX it also stays inside what the table reaches." data-tip="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and fills in the sheet size. On the GORDIX it also stays inside what the table reaches.">i</span>
             </div>
             <p class="hint" id="cncSuggestEmpty">Open a file first: the size is worked out from your parts.</p>
             <p class="hint" id="cncSuggestHint" hidden></p>
@@ -213,6 +217,7 @@
           <!-- Lengths everywhere show in these units; also asked in the first-visit chooser. -->
           <div class="seg unitSeg" id="units" role="group" aria-label="Units">
             <button data-v="mm">mm</button>
+            <button data-v="cm">cm</button>
             <button data-v="in">in</button>
           </div>
         </nav>
@@ -262,6 +267,7 @@
             <div class="camMain">
               <div class="camBar">
                 <div class="sheetStrip" id="camSheet" role="tablist" aria-label="Sheets"></div>
+                <span class="stockBadge" id="camStock" hidden></span>
                 <span class="camSummary" id="camSummary"></span>
                 <button class="primary" id="camDownloadAll">Download all files</button>
               </div>
@@ -303,6 +309,7 @@
           <span>Show lengths in</span>
           <div class="seg" id="chooserUnits" role="group" aria-label="Units">
             <button data-v="mm">mm</button>
+            <button data-v="cm">cm</button>
             <button data-v="in">inches</button>
           </div>
         </div>
