@@ -16,6 +16,7 @@ import { initTips } from './tip';
 import { setPlayState } from './icons';
 import { View3D, type Sheet3D, type SheetPlacement } from './view3d';
 import { fmtLen, toUnits, fromUnits, type Units } from './units';
+import { axesSvg } from './axesSvg';
 import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
 
@@ -969,13 +970,8 @@ function sheetSvg(shapes: PlacedShape[], cuts: ThroughCut[], net?: CutNetwork): 
     const rot = vertical ? ` transform="rotate(-90 ${cx} ${cy})"` : '';
     out.push(`<text class="lbl" x="${cx}" y="${cy}" font-size="${size.toFixed(1)}" text-anchor="middle"${rot}>${esc(name)}<tspan class="d" x="${cx}" dy="${(size * 1.15).toFixed(1)}" font-size="${(size * 0.8).toFixed(1)}">${fmtLen(sh.part.w, s.units, false)} × ${fmtLen(sh.part.h, s.units, s.units === 'in')}</tspan></text>`);
   }
-  // X and Y from the origin, in the margin around the sheet's lower-left corner, where X0 Y0 is.
-  const a = pad * 2.6, o = pad * 0.5, hd = pad * 0.14;
-  // Both arrows start from one corner point; X is red and Y green, as in most CAD programs.
-  const cx = -o, cy = H + o;
-  out.push(`<g class="sheetAxes" style="stroke-width:${(pad * 0.018).toFixed(2)}px;font-size:${(pad * 0.34).toFixed(1)}px">`
-    + `<g class="ax"><path d="M${cx},${cy}H${a}M${a - hd},${cy - hd}L${a},${cy}L${a - hd},${cy + hd}"/><text x="${a + pad * 0.18}" y="${cy + pad * 0.12}">X</text></g>`
-    + `<g class="ay"><path d="M${cx},${cy}V${H - a}M${cx - hd},${H - a + hd}L${cx},${H - a}L${cx + hd},${H - a + hd}"/><text x="${cx}" y="${H - a - pad * 0.18}" text-anchor="middle">Y</text></g></g>`);
+  // X and Y from the sheet's lower-left corner, where X0 Y0 is, in the margin around it.
+  out.push(axesSvg({ x: -pad * 0.5, y: H + pad * 0.5 }, [1, 0], [0, -1], pad));
   out.push('</svg>');
   return out.join('');
 }

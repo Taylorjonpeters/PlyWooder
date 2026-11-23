@@ -7,6 +7,7 @@ import { tip } from './tip';
 import { BitLibraryModal } from './bitLibraryView';
 import { icon, setPlayState } from './icons';
 import { fmtLen, type Units } from './units';
+import { axesSvg } from './axesSvg';
 
 /** One sheet of the current layout, as the workspace sees it. */
 /**
@@ -296,9 +297,15 @@ export class CamWorkspace {
     const { plan } = this.segments(this.timeline.length);
     parts.push(`<g class="plan">${plan}</g><g id="camDone"></g>`);
     parts.push(`<circle id="camTool" class="tool" r="3" cx="0" cy="0"/>`);
+    // Drawn as the sheet sits on the machine, so X always runs right and Y up. On a GORDIX table
+    // whose X side is short the G-code turns the sheet 90°, and the preview turns with it.
+    const turned = cfg.machine === 'gordix' && cfg.origin === 'center' && gordixFit(currentTable(cfg)).rotate;
+    const vw = turned ? h : w, vh = turned ? w : h;
+    const o = pad * 0.5;
     const svg = this.$('camSvg');
-    svg.setAttribute('viewBox', `${-pad} ${-pad} ${w + 2 * pad} ${h + 2 * pad}`);
-    svg.innerHTML = parts.join('');
+    svg.setAttribute('viewBox', `${-pad} ${-pad} ${vw + 2 * pad} ${vh + 2 * pad}`);
+    svg.innerHTML = `<g${turned ? ` transform="matrix(0 -1 1 0 0 ${w})"` : ''}>${parts.join('')}</g>`
+      + axesSvg({ x: -o, y: vh + o }, [1, 0], [0, -1], pad);
   }
 
   /** SVG paths for moves [0, n): cutting moves by operation, tabs, and rapids. */

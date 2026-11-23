@@ -238,9 +238,6 @@ details.collapse > .parts { margin-top: var(--sp-2); }
 .stepNext { margin-top: var(--sp-3); }
 
 /* X/Y axis indicator, top right of the sheets and the G-code preview. X runs left to right, Y bottom to top. */
-.axesWrap { position: sticky; top: 0; height: 0; z-index: 5; pointer-events: none; }
-.camPreview .axesWrap { position: absolute; top: var(--sp-2); right: var(--sp-2); }
-.axes { position: absolute; top: 0; right: 0; width: 48px; height: 48px; color: var(--muted); }
 /* Layout sheets: X and Y arrows at the lower-left corner of each sheet drawing. */
 .sheetAxes { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .sheetAxes text { stroke: none; font-weight: 500; letter-spacing: 0.02em; }
@@ -401,7 +398,7 @@ i.op { display: inline-block; width: 10px; height: 3px; border-radius: 2px; marg
 i.op.pocket { background: var(--pocket); } i.op.hole { background: var(--hole); } i.op.label { background: var(--label); }
 i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: none; border-top: 1px dashed var(--muted); height: 0; }
 .camPreview { position: relative; min-height: 0; overflow: hidden; }
-#camSvg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#camSvg { position: absolute; inset: 34px 0 0 0; width: 100%; height: calc(100% - 34px); display: block; } /* starts below the colour key */
 .camKey { position: absolute; left: 10px; top: var(--sp-2); display: flex; gap: 10px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 3px var(--sp-2); border-radius: var(--r-ctl); }
 #camSvg .reach { fill: none; stroke: var(--accent); stroke-dasharray: 10 6; stroke-width: 1.5px; }
 #camSvg .origin line { stroke: var(--accent); stroke-width: 1.5px; }
