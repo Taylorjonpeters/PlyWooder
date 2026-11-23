@@ -95,7 +95,14 @@ export type CamSettings = {
   laserFeed: number;
   /** Laser power, percent (GRBL only; the GORDIX laser is on/off). */
   laserPower: number;
-  /** Raise the whole job by this much for a dry run; 0 is a real cut. */
+  /**
+   * How far the "Air cut G-code" download raises the job, mm. The normal files are never raised.
+   */
+  airLift: number;
+  /**
+   * The lift writeGcode applies, mm: 0 for the real files, airLift for the air cut download. Set
+   * per download by the G-code view, never saved as a standing setting.
+   */
   airCut: number;
 };
 
@@ -133,7 +140,7 @@ export const CAM_DEFAULTS: CamSettings = {
   stockActual: {}, fitAllowance: 0, dogbones: false,
   throughExtra: 0.5, safeZ: 2, stepover: 0.4, ramp: false, rampAngle: 10,
   tabs: true, tabsOnHoles: true, tabHeight: 3, tabWidth: 5, tabSpacing: 400,
-  labels: false, labelHeight: 12, laserFeed: 1000, laserPower: 60, airCut: 0,
+  labels: false, labelHeight: 12, laserFeed: 1000, laserPower: 60, airCut: 0, airLift: 25,
 };
 
 export type OpKind = 'label' | 'pocket' | 'hole' | 'outline';

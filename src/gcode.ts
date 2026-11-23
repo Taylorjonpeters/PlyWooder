@@ -52,15 +52,21 @@ export type WriteContext = {
   cutDepth: number;
 };
 
-export function writeGcode(file: CamFile, ctx: WriteContext): string {
-  const { cfg } = ctx;
-  const m = MACHINES[cfg.machine];
-  const ox = cfg.origin === 'center' ? ctx.sheetW / 2 : 0;
-  const oy = cfg.origin === 'center' ? ctx.sheetH / 2 : 0;
+/** Sheet coordinates (lower-left origin) to machine coordinates, as every file for this sheet writes them. */
+function machineFrame(cfg: CamSettings, sheetW: number, sheetH: number) {
+  const ox = cfg.origin === 'center' ? sheetW / 2 : 0;
+  const oy = cfg.origin === 'center' ? sheetH / 2 : 0;
   // When the table's X side (S) is its short one, the sheet's long side runs along the machine's Y.
   const table = currentTable(cfg);
   const turn = cfg.machine === 'gordix' && cfg.origin === 'center' && gordixFit(table).rotate;
   const at = (mv: { x: number; y: number }) => (turn ? { x: -(mv.y - oy), y: mv.x - ox } : { x: mv.x - ox, y: mv.y - oy });
+  return { at, turn, table };
+}
+
+export function writeGcode(file: CamFile, ctx: WriteContext): string {
+  const { cfg } = ctx;
+  const m = MACHINES[cfg.machine];
+  const { at, turn, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
   const lift = file.kind === 'router' ? Math.max(0, cfg.airCut) : 0;
   const out: string[] = [];
   const line = (s: string) => out.push(s);
@@ -128,6 +134,55 @@ export function writeGcode(file: CamFile, ctx: WriteContext): string {
   if (m.spindle && rpm > 0) line('M5');
   line(`G0 X0 Y0${rapidF()}`);
   for (const e of m.end) line(e);
+  return out.join('\n') + '\n';
+}
+
+/** Feed for tracing the bounds: slow enough to watch the bit's path and stop the machine in time. */
+const BOUNDS_FEED = 1000;
+
+/**
+ * A dry run of where the job goes: one loop around the rectangle the bit centre covers across
+ * every file for this sheet (laser marks included), at safe height plus any air cut lift, with no
+ * spindle or laser switched on. Run it before cutting to check the job sits on the material and
+ * inside what the machine reaches. Null when the sheet has nothing to cut.
+ */
+export function writeBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'index' | 'count'>): string | null {
+  const { cfg } = ctx;
+  const m = MACHINES[cfg.machine];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const f of files) {
+    let prev: Move | null = null;
+    for (const mv of f.moves) {
+      // A cutting move covers its start point too, which is where the previous move ended.
+      if (!mv.rapid) for (const p of prev ? [prev, mv] : [mv]) {
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+      }
+      prev = mv;
+    }
+  }
+  if (!Number.isFinite(minX)) return null;
+  const { at, turn, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
+  const corners = [{ x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }].map(at);
+  const z = Math.max(0.5, cfg.safeZ) + Math.max(0, cfg.airCut);
+  const rapidF = m.rapidF === null ? '' : ` F${n(m.rapidF)}`;
+  const out = [
+    `; PlyWooder: ${clean(ctx.title)}, job bounds`,
+    `; Traces the ${n(maxX - minX)} x ${n(maxY - minY)} mm rectangle the bit centre covers in this sheet's files.`,
+    '; The cut reaches one bit radius further out. Nothing is cut: Z stays at safe height, spindle and laser off.',
+    `; Zero X, Y and Z exactly as for the cutting files, then watch the bit trace the outline at ${n(BOUNDS_FEED)} mm/min.`,
+    cfg.origin === 'center'
+      ? `; Origin: X0 Y0 = centre of the ${n(ctx.sheetW)} x ${n(ctx.sheetH)} mm sheet, Z0 = top of material${cfg.machine === 'gordix' ? `. GORDIX table ${table.id} (S ${n(table.S)} x W ${n(table.W)} mm)` : ''}`
+      : '; Origin: X0 Y0 = lower-left corner of the sheet, Z0 = top of material',
+    ...(turn ? ['; Sheet turned 90 degrees: its long side runs along table side W (machine Y).'] : []),
+    'G21',
+    'G90',
+    `G0 Z${n(z)}`,
+    `G0 X${n(corners[0].x)} Y${n(corners[0].y)}${rapidF}`,
+    ...[1, 2, 3, 0].map((i, k) => `G1 X${n(corners[i].x)} Y${n(corners[i].y)}${k === 0 ? ` F${BOUNDS_FEED}` : ''}`),
+    `G0 X0 Y0${rapidF}`,
+    ...m.end,
+  ];
   return out.join('\n') + '\n';
 }
 

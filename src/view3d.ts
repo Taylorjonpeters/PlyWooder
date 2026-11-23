@@ -12,6 +12,7 @@ export type Sheet3D = { ox: number; oy: number; w: number; h: number; t: number;
 
 type Actor = {
   obj: THREE.Group;
+  partId: number;
   mats: THREE.Material[];
   start: { pos: THREE.Vector3; quat: THREE.Quaternion };
   end: { pos: THREE.Vector3; quat: THREE.Quaternion } | null; // null = not on any sheet: fades out
@@ -19,6 +20,8 @@ type Actor = {
 };
 
 const LINE_OPACITY = 0.3;
+/** Opacity of a part the user has unticked, so it stays in view as context. */
+const DIM_OPACITY = 0.18;
 const ease = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
 /**
@@ -116,6 +119,7 @@ export class View3D {
   private playing: { from: number; t0: number; dur: number } | null = null;
   private boxes = { start: new THREE.Box3(), end: new THREE.Box3() };
   private userMoved = false;
+  private dimmed = new Set<number>();
   onProgress: (t: number) => void = () => {};
 
   constructor(private host: HTMLElement) {
@@ -199,6 +203,7 @@ export class View3D {
       obj.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), lineMat));
       this.actors.push({
         obj,
+        partId: part.id,
         mats: [...mats, lineMat],
         start: { pos: centre.clone().add(shift), quat: new THREE.Quaternion() },
         end: m ? { pos: centre.clone().applyMatrix4(m), quat: new THREE.Quaternion().setFromRotationMatrix(m) } : null,
@@ -231,16 +236,17 @@ export class View3D {
     this.progress = t;
     for (const a of this.actors) {
       const p = ease(Math.min(1, Math.max(0, (t - a.delay) / 0.55)));
+      const dim = this.dimmed.has(a.partId) ? DIM_OPACITY : 1;
       if (a.end) {
         a.obj.position.lerpVectors(a.start.pos, a.end.pos, p);
         // Lift each part clear of the assembly while it turns.
         a.obj.position.z += Math.sin(Math.PI * p) * 220;
         a.obj.quaternion.slerpQuaternions(a.start.quat, a.end.quat, p);
-        a.mats.forEach((m) => setOpacity(m, m instanceof THREE.LineBasicMaterial ? LINE_OPACITY : 1));
+        a.mats.forEach((m) => setOpacity(m, dim * (m instanceof THREE.LineBasicMaterial ? LINE_OPACITY : 1)));
       } else {
         a.obj.position.copy(a.start.pos);
         a.obj.quaternion.copy(a.start.quat);
-        a.mats.forEach((m) => setOpacity(m, (1 - p) * (m instanceof THREE.LineBasicMaterial ? LINE_OPACITY : 1)));
+        a.mats.forEach((m) => setOpacity(m, dim * (1 - p) * (m instanceof THREE.LineBasicMaterial ? LINE_OPACITY : 1)));
       }
       a.obj.visible = a.end !== null || p < 1;
     }
@@ -259,6 +265,15 @@ export class View3D {
     this.userMoved = false;
     this.playing = { from, t0: performance.now(), dur: dur * (1 - from) };
   }
+
+  /** Parts the user has unticked show faded; takes effect at once. */
+  setDimmed(partIds: Iterable<number>) {
+    this.dimmed = new Set(partIds);
+    this.setProgress(this.progress);
+  }
+
+  /** Show or hide the cut sheets; the Import step shows only the model. */
+  showSheets(on: boolean) { this.sheetGroup.visible = on; }
 
   pause() { this.playing = null; }
   get isPlaying() { return this.playing !== null; }
@@ -279,7 +294,9 @@ export class View3D {
 /** Opaque solids sort and depth-test cleanly; only fading ones go transparent. */
 function setOpacity(m: THREE.Material, o: number) {
   m.opacity = o;
-  m.transparent = o < 1;
+  const transparent = o < 1;
+  // The shader is built opaque or see-through, so switching after the first draw needs a rebuild.
+  if (m.transparent !== transparent) { m.transparent = transparent; m.needsUpdate = true; }
 }
 
 function partTop(p: Part) {

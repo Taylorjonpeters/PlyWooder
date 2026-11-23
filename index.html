@@ -29,6 +29,8 @@
           </div>
         </header>
 
+        <!-- Step 1: the file and its parts. -->
+        <div id="stepParts">
         <section id="fileSection">
           <div class="seg" id="workflow" role="group" aria-label="How you're cutting">
             <button data-v="saw">Manual Cut</button>
@@ -55,8 +57,6 @@
           </div>
         </section>
 
-        <!-- The sidebar follows the tab: layout settings for Sheets and 3D, CAM settings for G-code. -->
-        <div id="layoutSettings">
         <section id="partsSection" hidden>
           <details class="collapse" open>
             <summary><h2>Parts <span class="count" id="partsCount"></span></h2></summary>
@@ -64,32 +64,61 @@
             <div id="parts" class="parts"></div>
           </details>
         </section>
+        <div class="stepNext" id="toLayoutRow" hidden>
+          <button class="primary wide" id="toLayout" type="button">Next: Layout <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
+        </div>
+        </div>
 
+        <!-- Step 2: the machine, the sheet and how the parts are packed on it. The sidebar follows the step. -->
+        <div id="layoutSettings" hidden>
         <section id="cncSection" data-flow="cnc">
           <h2>Machine and sheet</h2>
           <label>Machine <select id="cncMachine"><!-- filled from MACHINE_LABELS in main.ts --></select></label>
           <label id="cncTableRow">GORDIX table <select id="cncTable"></select></label>
-          <label>Sheet <select id="cncSheet">
-            <option value="table">The table's work area</option>
-            <option value="custom">Custom size</option>
-          </select></label>
+          <div class="pair" id="cncTableBtns">
+            <button class="ghost" id="cncLoadTables" type="button" data-tip="Exported from GORDIX Studio's table setup page">Load table.cfg…</button>
+            <button class="ghost" id="cncResetTables" type="button">Studio defaults</button>
+          </div>
+          <input type="file" id="cncTableFile" accept=".cfg,.txt,text/plain" hidden />
+          <span class="fieldLabel">Sheet</span>
           <div class="row2" id="cncCustom">
-            <label>Length <input type="number" id="cncW" step="any" min="1" /></label>
-            <label>Width <input type="number" id="cncH" step="any" min="1" /></label>
+            <label>X length <input type="number" id="cncW" step="any" min="1" /></label>
+            <label>Y width <input type="number" id="cncH" step="any" min="1" /></label>
           </div>
-          <div class="suggestRow">
-            <button class="ghost" id="cncSuggest" type="button">Suggest size</button>
-            <label>from <select id="cncStock" aria-label="Stock sheet to cut from">
-              <option value="2438.4x1219.2">4 × 8 ft</option>
-              <option value="2500x1250">2500 × 1250 mm</option>
-              <option value="1525x1525">5 × 5 ft</option>
-              <option value="1219.2x1219.2">4 × 4 ft</option>
-              <option value="1219.2x609.6">2 × 4 ft</option>
-            </select></label>
-            <span class="tip" tabindex="0" role="img" aria-label="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and sets it as a custom sheet. On the GORDIX it also stays inside what the table reaches." data-tip="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and sets it as a custom sheet. On the GORDIX it also stays inside what the table reaches.">i</span>
+          <!-- Three ways to size the sheet: type it, take the most the table reaches, or let Suggest size find it. -->
+          <div class="sheetChips">
+            <button class="areaChip" id="cncUseTable" type="button" aria-pressed="false">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" /></svg>Use table max
+            </button>
+            <button class="areaChip" id="cncSuggestToggle" type="button" aria-expanded="false" aria-controls="cncSuggestBox">
+              <svg class="wand" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5L8.5 7.5" /><path class="spark" d="M11.5 1.5Q12 4 14.5 4.5Q12 5 11.5 7.5Q11 5 8.5 4.5Q11 4 11.5 1.5Z" /><path class="spark" d="M5 1.2Q5.3 2.7 6.8 3Q5.3 3.3 5 4.8Q4.7 3.3 3.2 3Q4.7 2.7 5 1.2Z" /><path class="spark" d="M12.5 9.2Q12.75 10.5 14 10.75Q12.75 11 12.5 12.3Q12.25 11 11 10.75Q12.25 10.5 12.5 9.2Z" /></svg>Suggest size
+            </button>
           </div>
-          <p class="hint" id="cncSuggestHint" hidden></p>
-          <label>Outline bit <select id="cncBit"></select></label>
+          <div class="suggestBox" id="cncSuggestBox" hidden>
+            <div class="suggestGrid">
+              <label><span class="fieldLabel">Stock <span class="tip" tabindex="0" role="img" aria-label="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and fills in the sheet size. On the GORDIX it also stays inside what the table reaches." data-tip="Finds the smallest piece to cut from your stock sheet that still fits the parts on as few sheets as possible, and fills in the sheet size. On the GORDIX it also stays inside what the table reaches.">i</span></span>
+                <select id="cncStock" aria-label="Stock sheet to cut from">
+                  <option value="2438.4x1219.2">4 × 8 ft</option>
+                  <option value="2500x1250">2500 × 1250 mm</option>
+                  <option value="1525x1525">5 × 5 ft</option>
+                  <option value="1219.2x1219.2">4 × 4 ft</option>
+                  <option value="1219.2x609.6">2 × 4 ft</option>
+                </select>
+              </label>
+              <label><span class="fieldLabel">Margin <span id="cncSuggestMarginUnit">(mm)</span> <span class="tip" tabindex="0" role="img" aria-label="Extra stock left around the parts on every side, so the piece doesn't have to sit exactly centred under the machine. The parts are centred on it." data-tip="Extra stock left around the parts on every side, so the piece doesn't have to sit exactly centred under the machine. The parts are centred on it.">i</span></span>
+                <input type="number" id="cncSuggestMargin" min="0" step="any" />
+              </label>
+              <button class="ghost iconBtn" id="cncSuggest" type="button" aria-label="Find the smallest size">
+                <svg class="wand" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5L8.5 7.5" /><path class="spark" d="M11.5 1.5Q12 4 14.5 4.5Q12 5 11.5 7.5Q11 5 8.5 4.5Q11 4 11.5 1.5Z" /><path class="spark" d="M5 1.2Q5.3 2.7 6.8 3Q5.3 3.3 5 4.8Q4.7 3.3 3.2 3Q4.7 2.7 5 1.2Z" /><path class="spark" d="M12.5 9.2Q12.75 10.5 14 10.75Q12.75 11 12.5 12.3Q12.25 11 11 10.75Q12.25 10.5 12.5 9.2Z" /></svg>
+              </button>
+            </div>
+            <p class="hint" id="cncSuggestEmpty">Open a file first: the size is worked out from your parts.</p>
+            <p class="hint" id="cncSuggestHint" hidden></p>
+          </div>
+          <div class="field">
+            <span class="fieldLabel">Outline bit <span class="tip" tabindex="0" role="img" aria-label="The bit that cuts out each part. Parts sit one bit width apart, so changing it changes the layout. Bits for holes and pockets are picked on the G-code step." data-tip="The bit that cuts out each part. Parts sit one bit width apart, so changing it changes the layout. Bits for holes and pockets are picked on the G-code step." data-tip-art="bit">i</span></span>
+            <select id="cncBit" aria-label="Outline bit"></select>
+          </div>
           <p class="hint" id="cncHint"></p>
         </section>
 
@@ -105,8 +134,8 @@
             <option value="custom">Custom…</option>
           </select>
           <div class="row2">
-            <label>Length <input type="number" id="sheetW" step="any" min="1" /></label>
-            <label>Width <input type="number" id="sheetH" step="any" min="1" /></label>
+            <label>X length <input type="number" id="sheetW" step="any" min="1" /></label>
+            <label>Y width <input type="number" id="sheetH" step="any" min="1" /></label>
           </div>
         </section>
 
@@ -121,7 +150,7 @@
             </select>
           </label>
           <div class="field">
-            <span class="fieldLabel">Part shape <span class="tip" tabindex="0" role="img" aria-label="Convex hull packs each part as its outer hull, so no part goes into another part's notch or hole. This changes the layout." data-tip="Convex hull packs each part as its outer hull, so no part goes into another part's notch or hole. This changes the layout.">i</span></span>
+            <span class="fieldLabel">Part shape <span class="tip" tabindex="0" role="img" aria-label="Convex hull packs each part as its outer hull, so no part goes into another part's notch or hole. This changes the layout." data-tip="Convex hull packs each part as its outer hull, so no part goes into another part's notch or hole. This changes the layout." data-tip-art="hull">i</span></span>
             <div class="seg" id="shape">
               <button data-v="true">Actual shape</button>
               <button data-v="hull">Convex hull</button>
@@ -139,23 +168,17 @@
         <section>
           <h2>Margins</h2>
           <label>Sheet edge margin <input type="number" id="edgeMargin" step="any" min="0" /></label>
-          <label data-flow="saw">Blade width (kerf) <input type="number" id="kerf" step="any" min="0" /></label>
-          <label class="check"><input type="checkbox" id="shareCuts" /> Share cuts between parts <span class="tip" tabindex="0" role="img" aria-label="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges." data-tip="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges.">i</span></label>
-          <label id="errorGapRow">Extra gap between parts <input type="number" id="errorGap" step="any" min="0" /></label>
+          <label class="check" data-flow="cnc"><input type="checkbox" id="centerLayout" /> Center parts on the sheet <span class="tip" tabindex="0" role="img" aria-label="Moves each sheet's parts, as one block, to the middle of the sheet instead of the lower-left corner. The edge margin is still kept." data-tip="Moves each sheet's parts, as one block, to the middle of the sheet instead of the lower-left corner. The edge margin is still kept." data-tip-art="center">i</span></label>
+          <label data-flow="saw"><span class="fieldLabel">Blade width (kerf) <span class="tip" tabindex="0" role="img" aria-label="How much wood the saw blade removes in one cut. Parts sit at least this far apart, so measure your blade's actual cut." data-tip="How much wood the saw blade removes in one cut. Parts sit at least this far apart, so measure your blade's actual cut." data-tip-art="kerf">i</span></span><input type="number" id="kerf" step="any" min="0" /></label>
+          <label class="check"><input type="checkbox" id="shareCuts" /> Share cuts between parts <span class="tip" tabindex="0" role="img" aria-label="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges." data-tip="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges." data-tip-art="share">i</span></label>
+          <label id="errorGapRow"><span class="fieldLabel">Extra gap between parts <span class="tip" tabindex="0" role="img" aria-label="Extra room between parts on top of the blade or bit width, for cuts that wander off the line." data-tip="Extra room between parts on top of the blade or bit width, for cuts that wander off the line." data-tip-art="gap">i</span></span><input type="number" id="errorGap" step="any" min="0" /></label>
           <p class="hint" id="errorGapHint" hidden>Not used while Share cuts is on: neighbours sit exactly one bit or blade width apart.</p>
         </section>
 
         <section>
           <h2>Display</h2>
-          <label class="check" data-flow="saw"><input type="checkbox" id="showThrough" /> Show through cuts</label>
+          <label class="check" data-flow="saw"><input type="checkbox" id="showThrough" /> Show through cuts <span class="tip" tabindex="0" role="img" aria-label="Draws the cutting order on each sheet: straight cuts from edge to edge of the piece in hand, numbered, so a table saw or track saw can make them in turn." data-tip="Draws the cutting order on each sheet: straight cuts from edge to edge of the piece in hand, numbered, so a table saw or track saw can make them in turn." data-tip-art="through">i</span></label>
           <label class="check" data-flow="cnc"><input type="checkbox" id="showCuts" /> Show CNC cut paths</label>
-          <div class="field">
-            <span class="fieldLabel">Show lengths in</span>
-            <div class="seg" id="units">
-              <button data-v="mm">mm</button>
-              <button data-v="in">inches</button>
-            </div>
-          </div>
         </section>
 
         <section id="exportSection" hidden>
@@ -172,7 +195,8 @@
         <!-- The two main actions stay on screen however far the settings are scrolled. -->
         <div class="sideActions" id="sideActions" hidden>
           <button class="primary" id="exportAll" type="button">Download all (.dxf)</button>
-          <button class="primary" id="openGcode" type="button" data-flow="cnc">Make G-code <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
+          <button class="primary" id="openGcode" type="button" data-flow="cnc">Next: G-code <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
+          <button class="ghost" id="openVisualize" type="button">Visualize <svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
         </div>
         </div>
         <div id="camSettings" hidden></div>
@@ -185,10 +209,17 @@
 
       <main class="main">
         <nav class="tabs">
-          <button data-tab="sheets" class="on">Sheets</button>
-          <button data-tab="3d">3D / Animate</button>
-          <button data-tab="gcode" data-flow="cnc">G-code</button>
+          <button data-tab="3d" class="on"><span class="stepNo">1</span>Import</button>
+          <button data-tab="sheets"><span class="stepNo">2</span>Layout</button>
+          <button data-tab="gcode" data-flow="cnc"><span class="stepNo">3</span>G-code</button>
+          <button data-tab="visualize"><span class="stepNo">4</span>Visualize</button>
           <span class="status" id="status"></span>
+          <!-- Lengths everywhere show in these units; also asked in the first-visit chooser. -->
+          <div class="seg unitSeg" id="units" role="group" aria-label="Units">
+            <button data-v="mm">mm</button>
+            <button data-v="cm">cm</button>
+            <button data-v="in">in</button>
+          </div>
         </nav>
         <!-- Messages that apply to every tab: out-of-date layout now, file errors later. -->
         <div class="notices" id="notices">
@@ -202,16 +233,27 @@
           </div>
         </div>
         <div class="pane" id="sheetsPane">
-          <div class="empty" id="empty">
+          <!-- X/Y axes are drawn at each sheet's origin corner (sheetSvg). -->
+          <div class="empty stepEmpty">
             <h2>Open a STEP or DXF file to get started</h2>
-            <p>Each solid or closed outline becomes a part.</p>
+            <p>Each solid or closed outline becomes a part. Start on step 1, Import.</p>
           </div>
-          <div class="empty loading" id="packing" hidden role="status"><img class="mascot" src="/src/assets/mascot.webp" alt="" width="112" height="112" /><h2 id="packingText">Packing your parts…</h2></div>
+
+          <div class="empty packPrompt" id="packPrompt" hidden>
+            <h2>Ready to pack</h2>
+            <p>Set the machine, sheet and spacing in the sidebar, then pack the parts onto sheets.</p>
+            <button class="primary" id="packBtn" type="button">Pack</button>
+          </div>
+          <div class="stockNeed" id="stockNeed" hidden></div>
           <div class="notice info" id="skippedNote" hidden></div>
           <div id="sheets"></div>
         </div>
-        <div class="pane" id="viewPane" hidden>
+        <div class="pane" id="viewPane">
           <div id="view3d"></div>
+          <div class="empty stepEmpty viewEmpty">
+            <h2>Open a STEP or DXF file to get started</h2>
+            <p>Each solid or closed outline becomes a part. Drop one anywhere on this page.</p>
+          </div>
           <div class="player">
             <button id="play" aria-label="Play"><svg class="ico" aria-hidden="true"><use href="#i-play" /></svg></button>
             <input type="range" id="scrub" min="0" max="1000" value="0" />
@@ -220,12 +262,13 @@
         <div class="pane" id="gcodePane" hidden>
           <div class="empty" id="camEmpty">
             <h2>G-code</h2>
-            <p>Open a file to see each sheet's toolpaths here.</p>
+            <p>Open a file and pack it on the Layout step to see each sheet's toolpaths here.</p>
           </div>
           <div class="cam" id="camBody" hidden>
             <div class="camMain">
               <div class="camBar">
                 <div class="sheetStrip" id="camSheet" role="tablist" aria-label="Sheets"></div>
+                <span class="stockBadge" id="camStock" hidden></span>
                 <span class="camSummary" id="camSummary"></span>
                 <button class="primary" id="camDownloadAll">Download all files</button>
               </div>
@@ -262,6 +305,20 @@
             <span>Tight nesting for your machine and bit, plus G-code.</span>
           </button>
         </div>
+        <div class="chooserUnits">
+          <span>Show lengths in</span>
+          <div class="seg" id="chooserUnits" role="group" aria-label="Units">
+            <button data-v="mm">mm</button>
+            <button data-v="cm">cm</button>
+            <button data-v="in">inches</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="scrim" class="scrim" hidden role="status" aria-live="polite">
+      <div class="scrim-box">
+        <img class="mascot" src="/src/assets/mascot.webp" width="112" height="112" alt="" aria-hidden="true" />
+        <span class="spinner" aria-hidden="true"></span><span id="scrimLabel"></span>
       </div>
     </div>
     <div class="dropOverlay" id="dropOverlay">Drop a STEP or DXF file</div>
