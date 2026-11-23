@@ -377,9 +377,9 @@ function labelUnits() {
   const u = state.settings.units;
   for (const id of unitFields) {
     const input = $<HTMLInputElement>(id);
-    const text = [...input.parentElement!.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
+    const el = input.parentElement!.querySelector<HTMLElement>(':scope > .fieldLabel') ?? input.parentElement!;
+    const text = [...el.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
     if (!text) continue;
-    const el = input.parentElement!;
     el.dataset.base ??= text.textContent!.trim();
     text.textContent = `${el.dataset.base} (${u}) `;
   }
@@ -797,6 +797,7 @@ function render() {
   const hasSheets = shownGroups().some((g) => g.result?.sheets.length);
   $('exportSection').hidden = !hasSheets;
   $('sideActions').hidden = !hasSheets;
+  renderStockNeed(cncView);
   renderSkipped();
   const host = $('sheets');
   host.innerHTML = '';
@@ -847,6 +848,30 @@ function render() {
   applyStale(isStale());
   if (state.tab === 'gcode') cam.render();
   update3d();
+}
+
+/**
+ * Manual Cut: what to buy, at the top of the layout. One entry per thickness, e.g. "2 sheets of
+ * 18 mm, 4 × 8 ft (2438 × 1219 mm)". CNC shows its stock on the G-code tab instead.
+ */
+function renderStockNeed(cncView: boolean) {
+  const el = $('stockNeed');
+  const s = view();
+  const groups = shownGroups().filter((g) => g.result?.sheets.length);
+  const lost = shownGroups().reduce((a, g) => a + (g.result?.unplaced.length ?? 0), 0);
+  el.hidden = cncView || !groups.length;
+  if (el.hidden) return;
+  const dims = `${fmtLen(s.sheetW, s.units, false)} × ${fmtLen(s.sheetH, s.units)}`;
+  // A named preset reads better ("4 × 8 ft"), as long as it is the size the layout was packed for.
+  const opt = $<HTMLSelectElement>('sheetPreset').selectedOptions[0];
+  const [pw, ph] = (opt?.value ?? '').split('x').map(Number);
+  const named = !!opt && opt.value !== 'custom' && Math.abs(pw - s.sheetW) < 0.5 && Math.abs(ph - s.sheetH) < 0.5 && /ft/.test(opt.text);
+  const size = named ? `${esc(opt.text.split(' (')[0])} (${dims})` : dims;
+  el.innerHTML = '<span class="stockNeedLabel">Stock needed</span>' + groups.map((g) => {
+    const n = g.result!.sheets.length;
+    return `<span><b>${n} sheet${n === 1 ? '' : 's'}</b> of ${fmtLen(g.thickness, s.units)}, ${size}</span>`;
+  }).join('<span class="sep">·</span>')
+    + (lost ? `<span class="sep">·</span><b class="warnText">${lost} part${lost === 1 ? '' : 's'} too big for this sheet</b>` : '');
 }
 
 /** Say which parts are missing from the sheets because they aren't flat stock, and how to add them. */

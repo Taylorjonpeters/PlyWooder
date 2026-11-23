@@ -532,3 +532,7 @@ svg.wand .spark { fill: currentColor; stroke: none; }
 /* G-code tab: the stock piece this sheet needs, as a small badge beside the summary. */
 .stockBadge { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--field-line); border-radius: 999px; background: var(--field-bg); color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; cursor: help; }
 .stockBadge b { color: var(--ink); font-weight: 600; }
+/* Manual Cut: what to buy, above the sheets. */
+.stockNeed { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-4); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--field-line); border-radius: var(--r-card); background: var(--panel); color: var(--muted); font-size: var(--fs-sm); }
+.stockNeed b { color: var(--ink); }
+.stockNeedLabel { color: var(--ink); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; font-size: var(--fs-xs); margin-right: var(--sp-1); }

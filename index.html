@@ -169,15 +169,15 @@
           <h2>Margins</h2>
           <label>Sheet edge margin <input type="number" id="edgeMargin" step="any" min="0" /></label>
           <label class="check" data-flow="cnc"><input type="checkbox" id="centerLayout" /> Center parts on the sheet <span class="tip" tabindex="0" role="img" aria-label="Moves each sheet's parts, as one block, to the middle of the sheet instead of the lower-left corner. The edge margin is still kept." data-tip="Moves each sheet's parts, as one block, to the middle of the sheet instead of the lower-left corner. The edge margin is still kept." data-tip-art="center">i</span></label>
-          <label data-flow="saw">Blade width (kerf) <input type="number" id="kerf" step="any" min="0" /></label>
+          <label data-flow="saw"><span class="fieldLabel">Blade width (kerf) <span class="tip" tabindex="0" role="img" aria-label="How much wood the saw blade removes in one cut. Parts sit at least this far apart, so measure your blade's actual cut." data-tip="How much wood the saw blade removes in one cut. Parts sit at least this far apart, so measure your blade's actual cut." data-tip-art="kerf">i</span></span><input type="number" id="kerf" step="any" min="0" /></label>
           <label class="check"><input type="checkbox" id="shareCuts" /> Share cuts between parts <span class="tip" tabindex="0" role="img" aria-label="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges." data-tip="Neighbours sit exactly one bit or blade width apart, so one pass cuts both edges." data-tip-art="share">i</span></label>
-          <label id="errorGapRow">Extra gap between parts <input type="number" id="errorGap" step="any" min="0" /></label>
+          <label id="errorGapRow"><span class="fieldLabel">Extra gap between parts <span class="tip" tabindex="0" role="img" aria-label="Extra room between parts on top of the blade or bit width, for cuts that wander off the line." data-tip="Extra room between parts on top of the blade or bit width, for cuts that wander off the line." data-tip-art="gap">i</span></span><input type="number" id="errorGap" step="any" min="0" /></label>
           <p class="hint" id="errorGapHint" hidden>Not used while Share cuts is on: neighbours sit exactly one bit or blade width apart.</p>
         </section>
 
         <section>
           <h2>Display</h2>
-          <label class="check" data-flow="saw"><input type="checkbox" id="showThrough" /> Show through cuts</label>
+          <label class="check" data-flow="saw"><input type="checkbox" id="showThrough" /> Show through cuts <span class="tip" tabindex="0" role="img" aria-label="Draws the cutting order on each sheet: straight cuts from edge to edge of the piece in hand, numbered, so a table saw or track saw can make them in turn." data-tip="Draws the cutting order on each sheet: straight cuts from edge to edge of the piece in hand, numbered, so a table saw or track saw can make them in turn." data-tip-art="through">i</span></label>
           <label class="check" data-flow="cnc"><input type="checkbox" id="showCuts" /> Show CNC cut paths</label>
         </section>
 
@@ -244,6 +244,7 @@
             <p>Set the machine, sheet and spacing in the sidebar, then pack the parts onto sheets.</p>
             <button class="primary" id="packBtn" type="button">Pack</button>
           </div>
+          <div class="stockNeed" id="stockNeed" hidden></div>
           <div class="notice info" id="skippedNote" hidden></div>
           <div id="sheets"></div>
         </div>

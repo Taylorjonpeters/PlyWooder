@@ -92,6 +92,31 @@ export const TIP_ART: Record<string, string> = {
     <rect class="c" x="38" y="11" width="120" height="56"/>
     ${cap(120, 'One loop around everything that gets cut')}`),
 
+  // Manual cut: the saw blade takes a strip of wood between neighbours.
+  kerf: svg(`
+    <rect class="p" x="22" y="20" width="86" height="46"/><rect class="p" x="132" y="20" width="86" height="46"/>
+    <rect class="bit" x="112" y="12" width="16" height="62"/>
+    ${cap(120, 'The blade turns this much wood to dust')}`),
+
+  // Extra room on top of the blade width.
+  gap: svg(`
+    <rect class="p" x="10" y="20" width="46" height="46"/><rect class="p" x="64" y="20" width="46" height="46"/>
+    <rect class="bit" x="56" y="14" width="8" height="58"/>
+    ${cap(60, 'Blade width only')}
+    <rect class="p" x="130" y="20" width="40" height="46"/><rect class="p" x="190" y="20" width="40" height="46"/>
+    <rect class="bit" x="176" y="14" width="8" height="58"/>
+    <path class="d" d="M170 10V76M190 10V76"/>
+    ${cap(180, 'Plus room for error')}`),
+
+  // Numbered cuts, each running edge to edge across the piece in hand.
+  through: svg(`
+    <rect class="m" x="20" y="6" width="200" height="66"/>
+    <rect class="p" x="26" y="12" width="78" height="24"/><rect class="p" x="26" y="46" width="78" height="20"/><rect class="p" x="118" y="12" width="96" height="54"/>
+    <path class="c" d="M111 6V72M20 41H111"/>
+    <circle class="bit" cx="111" cy="22" r="6"/><text class="cap" x="111" y="25" text-anchor="middle">1</text>
+    <circle class="bit" cx="64" cy="41" r="6"/><text class="cap" x="64" y="44" text-anchor="middle">2</text>
+    ${cap(120, 'Numbered cuts, each edge to edge')}`),
+
   // A slot cut wider by the allowance so the tab slides in.
   fit: svg(`
     <path class="m" d="M10 14H45V50H75V14H110V70H10Z"/>
