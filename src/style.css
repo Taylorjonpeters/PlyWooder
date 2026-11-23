@@ -241,7 +241,11 @@ details.collapse > .parts { margin-top: var(--sp-2); }
 .axesWrap { position: sticky; top: 0; height: 0; z-index: 5; pointer-events: none; }
 .camPreview .axesWrap { position: absolute; top: var(--sp-2); right: var(--sp-2); }
 .axes { position: absolute; top: 0; right: 0; width: 48px; height: 48px; color: var(--muted); }
-#sheetsPane .axesWrap .axes { top: calc(-1 * var(--sp-4)); right: calc(-1 * var(--sp-2)); }
+/* Layout sheets: X and Y arrows at the lower-left corner of each sheet drawing. */
+.sheetAxes { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.sheetAxes text { stroke: none; font-weight: 500; letter-spacing: 0.02em; }
+.sheetAxes .ax { stroke: #e5534b; } .sheetAxes .ax text { fill: #e5534b; }
+.sheetAxes .ay { stroke: #3fb950; } .sheetAxes .ay text { fill: #3fb950; }
 
 /* Loading scrim. Over the main area it lets clicks through, so nothing is locked while a layout
    packs; over the whole screen it blocks input while a file is read. */
