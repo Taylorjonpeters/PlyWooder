@@ -13,38 +13,92 @@ function rand(seed: number) {
   return () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
 }
 
+/**
+ * Smooth value noise that repeats every `px` lattice cells across and `py` down, so anything
+ * built from it tiles. Sample with u, v in 0..1 (one tile).
+ */
+function periodicNoise(px: number, py: number, r: () => number) {
+  const lat = new Float32Array(px * py).map(() => r() * 2 - 1);
+  const s = (t: number) => t * t * (3 - 2 * t);
+  return (u: number, v: number) => {
+    const x = u * px, y = v * py;
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const fx = s(x - xi), fy = s(y - yi);
+    const x0 = ((xi % px) + px) % px, y0 = ((yi % py) + py) % py;
+    const x1 = (x0 + 1) % px, y1 = (y0 + 1) % py;
+    const a = lat[y0 * px + x0], b = lat[y0 * px + x1], c = lat[y1 * px + x0], d = lat[y1 * px + x1];
+    return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+  };
+}
+
+/** Octaves of periodic noise, each twice as fine; about -1..1. */
+function periodicFbm(px: number, py: number, octaves: number, r: () => number) {
+  const layers = Array.from({ length: octaves }, (_, o) => periodicNoise(px << o, py << o, r));
+  return (u: number, v: number) => {
+    let sum = 0, amp = 1, norm = 0;
+    for (const n of layers) { sum += n(u, v) * amp; norm += amp; amp *= 0.5; }
+    return sum / norm;
+  };
+}
+
+/**
+ * Rotary-cut birch veneer. The peeler cuts across the growth rings at a slight, wandering angle,
+ * so the rings show as long contour lines that bunch into ovals and flames. Here that is a smooth
+ * field (rows across the grain, bent by low-frequency noise) whose whole-number crossings are the
+ * ring lines: each one sharp on one side and fading on the other, as latewood shades into
+ * earlywood. Fibre streaks along the grain, a little blotchy colour and a few pin knots finish it.
+ * Grain runs along u (x); every term repeats across the tile.
+ */
 function faceTexture(): THREE.Texture {
   const W = 1024, H = 1024;
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#e4cc9f';
-  g.fillRect(0, 0, W, H);
-  const r = rand(7);
-  // Broad colour drifts, then fine grain lines. Every wave uses whole cycles across W so it tiles.
-  for (let i = 0; i < 26; i++) {
-    const y0 = r() * H, amp = 6 + r() * 30, cyc = 1 + Math.floor(r() * 3), ph = r() * 6.28;
-    g.strokeStyle = r() < 0.5 ? 'rgba(190,140,80,0.10)' : 'rgba(255,240,215,0.12)';
-    g.lineWidth = 20 + r() * 50;
-    for (const dy of [-H, 0, H]) {
-      g.beginPath();
-      for (let x = 0; x <= W; x += 8) g.lineTo(x, y0 + dy + amp * Math.sin((x / W) * cyc * 2 * Math.PI + ph));
-      g.stroke();
-    }
-  }
-  for (let i = 0; i < 260; i++) {
-    const y0 = r() * H, amp = 2 + r() * 14, cyc = 1 + Math.floor(r() * 4), ph = r() * 6.28;
-    const cyc2 = 3 + Math.floor(r() * 6), amp2 = r() * 3;
-    g.strokeStyle = `rgba(${120 + r() * 50},${80 + r() * 30},${40 + r() * 20},${0.05 + r() * 0.16})`;
-    g.lineWidth = 0.6 + r() * 1.8;
-    for (const dy of [-H, 0, H]) {
-      g.beginPath();
-      for (let x = 0; x <= W; x += 6) {
-        g.lineTo(x, y0 + dy + amp * Math.sin((x / W) * cyc * 2 * Math.PI + ph) + amp2 * Math.sin((x / W) * cyc2 * 2 * Math.PI));
+  const r = rand(11);
+  const warp = periodicFbm(1, 3, 5, r); // the big ovals and flames, long along the grain
+  const ripple = periodicFbm(3, 20, 3, r); // smaller wobble in each line
+  const strength = periodicFbm(2, 7, 3, r); // some rings show strongly, others barely
+  const tone = periodicFbm(1, 4, 4, r); // long light and dark bands
+  const fibre = periodicNoise(3, 640, r); // streaks along the grain
+  const fibre2 = periodicNoise(12, 1800, r); // finer streaks
+  const fleck = periodicNoise(70, 900, r); // pores and tiny dark specks
+  const RINGS = 40, BEND = 9;
+  // Pin knots: small dark eyes the ring lines swirl around.
+  const knots = Array.from({ length: 2 }, () => ({ u: r(), v: r(), rad: 0.004 + r() * 0.003 }));
+  const base = [232, 213, 176], light = [244, 231, 203], dark = [178, 136, 86];
+  const img = g.createImageData(W, H);
+  const d = img.data;
+  for (let j = 0; j < H; j++) {
+    const v = j / H;
+    for (let i = 0; i < W; i++) {
+      const u = i / W;
+      let swirl = 0, knot = 0;
+      for (const k of knots) {
+        // Wrapped distance, so knots near an edge tile too; stretched along the grain.
+        const du = (((u - k.u + 1.5) % 1) - 0.5) * 0.45, dv = ((v - k.v + 1.5) % 1) - 0.5;
+        const q = Math.hypot(du, dv) / k.rad;
+        swirl += 1.1 / (1 + q * q * 0.12);
+        knot = Math.max(knot, Math.exp(-q * q * 0.9));
       }
-      g.stroke();
+      const t = v * RINGS + warp(u, v) * BEND + ripple(u, v) * 0.35 + swirl;
+      const f = t - Math.floor(t);
+      // A soft band that darkens toward a crisp edge where the next ring starts.
+      const ringLine = 0.55 * Math.pow(f, 3) + 0.45 * Math.exp(-f * 4) * 0.4 + 0.5 * Math.exp(-(1 - f) * 55);
+      const show = Math.max(0, Math.min(1, 0.25 + 0.9 * (strength(u, v) * 0.5 + 0.5)));
+      let m = ringLine * show * 0.34; // toward dark
+      const lift = Math.max(0, Math.min(1, tone(u, v) * 0.7 + 0.5)); // toward light
+      m += Math.max(0, fibre(u, v)) * 0.09 + Math.max(0, fibre2(u, v)) * 0.06;
+      if (fleck(u, v) > 0.86) m += 0.12;
+      m = Math.min(1, m + knot * 0.45);
+      const idx = (j * W + i) * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        const b = base[ch] + (light[ch] - base[ch]) * lift * 0.55;
+        d[idx + ch] = b + (dark[ch] - b) * m - knot * 10 * (ch === 2 ? 1.2 : 1);
+      }
+      d[idx + 3] = 255;
     }
   }
+  g.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;

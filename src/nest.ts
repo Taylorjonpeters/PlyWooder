@@ -12,6 +12,7 @@ export type NestSettings = {
   kerf: number; // bit diameter or blade kerf
   errorGap: number; // extra safety gap between parts for human error
   shareCuts: boolean; // common-line cutting: neighbours sit exactly one bit apart and share a cut
+  centerLayout?: boolean; // CNC only: slide each sheet's parts as a block to the middle of the sheet
   mode: NestMode;
   shape: 'true' | 'hull';
   rotation: RotationRule;
@@ -113,6 +114,7 @@ class Grid {
   rf: Int32Array;
   used = 0;
   maxX = 0;
+  maxY = 0;
   constructor(public W: number, public H: number) {
     this.rf = new Int32Array(W * H);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) this.rf[y * W + x] = W - x;
@@ -131,6 +133,13 @@ class Grid {
     }
     return null;
   }
+  /** Lowest, then leftmost, position where the raster fits. */
+  findLow(r: Raster): { gx: number; gy: number } | null {
+    for (let gy = 0; gy + r.ch <= this.H; gy++) {
+      for (let gx = 0; gx + r.cw <= this.W; gx++) if (this.fits(r, gx, gy)) return { gx, gy };
+    }
+    return null;
+  }
   place(r: Raster, gx: number, gy: number) {
     const { W, rf } = this;
     const { runs } = r;
@@ -145,6 +154,7 @@ class Grid {
     }
     this.used += r.cells;
     this.maxX = Math.max(this.maxX, gx + r.cw);
+    this.maxY = Math.max(this.maxY, gy + r.ch);
   }
 }
 
@@ -194,11 +204,16 @@ function searchTrueShape(items: NestItem[], s: NestSettings, ms: number, met?: (
         if (si === out.sheets.length) out.sheets.push({ grid: new Grid(W, H), placed: [] });
         const sh = out.sheets[si];
         let best: { r: Raster; gx: number; gy: number; score: number } | null = null;
+        // Try the leftmost and the lowest spot for each turn. Keep the one that grows the used
+        // part of the sheet least (width, then height), so offcuts stay in one piece rather than
+        // a part sitting out on its own where it happens to reach least far right.
         for (const r of rs) {
-          const f = sh.grid.find(r);
-          if (!f) continue;
-          const score = (f.gx + r.cw) * 1e5 + f.gy + r.ch;
-          if (!best || score < best.score) best = { r, ...f, score };
+          const g = sh.grid;
+          for (const f of [g.find(r), g.findLow(r)]) {
+            if (!f) continue;
+            const score = Math.max(g.maxX, f.gx + r.cw) * 1e12 + Math.max(g.maxY, f.gy + r.ch) * 1e8 + f.gy * 1e4 + f.gx;
+            if (!best || score < best.score) best = { r, ...f, score };
+          }
         }
         if (best) {
           sh.grid.place(best.r, best.gx, best.gy);
@@ -266,6 +281,7 @@ function nestTrueShape(items: NestItem[], s: NestSettings) {
     }));
     const shapes = new Map(sh.placed.map(({ item }) => [item.key, s.shape === 'hull' ? [{ outer: item.hull, holes: [] }] : item.regions]));
     compact(placements, shapes, gap, s.edgeMargin);
+    if (s.centerLayout) centerPlacements(placements, shapes, s);
     const cutShapes = sh.placed.map(({ item }, k) => item.regions.map((g) => ({
       outer: applyXform(g.outer, placements[k].xform), holes: g.holes.map((hh) => applyXform(hh, placements[k].xform)),
     })));
@@ -281,6 +297,24 @@ function nestTrueShape(items: NestItem[], s: NestSettings) {
     if (score < pickScore) { pick = sheets; pickScore = score; pickRun = cand.run; }
   }
   return { sheets: pick ?? build(best), unplaced: pickRun.unplaced.map((u) => u.key) };
+}
+
+/** Move the whole packed block so its bounding box sits in the middle of the sheet, never past the edge margin. */
+function centerPlacements(placements: Placement[], shapes: Map<string, Region[]>, s: NestSettings) {
+  if (!placements.length) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const pl of placements) {
+    for (const r of shapes.get(pl.key)!) {
+      const b = bbox(applyXform(r.outer, pl.xform));
+      minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY);
+      maxX = Math.max(maxX, b.maxX); maxY = Math.max(maxY, b.maxY);
+    }
+  }
+  const m = s.edgeMargin;
+  const clamp = (d: number, lo: number, hi: number) => (lo > hi ? 0 : Math.max(lo, Math.min(hi, d)));
+  const dx = clamp((s.sheetW - (minX + maxX)) / 2, m - minX, s.sheetW - m - maxX);
+  const dy = clamp((s.sheetH - (minY + maxY)) / 2, m - minY, s.sheetH - m - maxY);
+  for (const pl of placements) { pl.xform = { ...pl.xform, tx: pl.xform.tx + dx, ty: pl.xform.ty + dy }; }
 }
 
 /**

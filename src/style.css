@@ -137,8 +137,17 @@ input:focus-visible, select:focus-visible, .seg button:focus-visible { outline-o
 .legal a:hover { color: var(--ink); }
 
 section { margin-top: var(--sp-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
-/* Section label: the small caps heading in the sidebar. */
-section h2 { margin: 0; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+/*
+ * Sidebar sections: a rule above each one and a heading in full ink with a short accent bar, so the
+ * headings read clearly above the muted field labels under them.
+ */
+.side section { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--line); }
+section h2 {
+  display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-1);
+  font-size: var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink);
+}
+section h2::before { content: ''; flex: none; width: 3px; height: 1em; border-radius: 2px; background: var(--accent); }
+section h2 .count { color: var(--muted); }
 
 /* ---------------------------------------------------------------------------
    Fields: every input and select looks the same, and looks editable.
@@ -212,6 +221,9 @@ details.collapse > .parts { margin-top: var(--sp-2); }
 .tabs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line); background: var(--panel); }
 .tabs button[data-tab] { min-height: var(--control-h); border: 0; background: none; padding: 0 var(--sp-3); border-radius: var(--r-ctl); cursor: pointer; color: var(--muted); font-size: var(--fs-md); white-space: nowrap; }
 .tabs button[data-tab].on { background: var(--bg); color: var(--ink); font-weight: 600; }
+/* The step number sits in a small box before the name. */
+.tabs .stepNo { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: var(--sp-2); border: 1px solid var(--field-line); border-radius: var(--r-ctl); font-size: var(--fs-xs); font-weight: 600; }
+.tabs button[data-tab].on .stepNo { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .status { margin-left: auto; color: var(--muted); font-size: var(--fs-sm); }
 .status.busy::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: var(--sp-2); border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -221,6 +233,16 @@ details.collapse > .parts { margin-top: var(--sp-2); }
 #skippedNote { margin: 0 0 var(--sp-4); }
 .empty { max-width: 460px; margin: 12vh auto; text-align: center; color: var(--muted); }
 .empty h2 { color: var(--ink); font-size: var(--fs-xl); }
+/* Steps: the empty prompt sits over the 3D view; the Next button closes each step's sidebar. */
+.viewEmpty { position: absolute; inset: 0; margin: 0; max-width: none; display: grid; align-content: center; justify-items: center; pointer-events: none; }
+.stepNext { margin-top: var(--sp-3); }
+
+/* X/Y axis indicator, top right of the sheets and the G-code preview. X runs left to right, Y bottom to top. */
+.axesWrap { position: sticky; top: 0; height: 0; z-index: 5; pointer-events: none; }
+.camPreview .axesWrap { position: absolute; top: var(--sp-2); right: var(--sp-2); }
+.axes { position: absolute; top: 0; right: 0; width: 48px; height: 48px; color: var(--muted); }
+#sheetsPane .axesWrap .axes { top: calc(-1 * var(--sp-4)); right: calc(-1 * var(--sp-2)); }
+
 /* Loading scrim. Over the main area it lets clicks through, so nothing is locked while a layout
    packs; over the whole screen it blocks input while a file is read. */
 .scrim { position: fixed; z-index: 30; display: grid; place-items: center; background: var(--scrim); pointer-events: none; }
@@ -228,13 +250,6 @@ details.collapse > .parts { margin-top: var(--sp-2); }
 .scrim-box { display: grid; justify-items: center; gap: var(--sp-2); text-align: center; font-family: var(--font-head); font-size: var(--fs-xl); color: var(--ink); }
 .scrim-box .mascot { width: 112px; height: 112px; flex: none; object-fit: contain; }
 .scrim-box .spinner { display: none; width: 18px; height: 18px; margin: 0 auto; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
-.mascot-on-dark { display: none; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .mascot-on-light { display: none; }
-  :root:not([data-theme='light']) .mascot-on-dark { display: block; }
-}
-:root[data-theme='dark'] .mascot-on-light { display: none; }
-:root[data-theme='dark'] .mascot-on-dark { display: block; }
 /* Reduced motion: no animated logo, a slow spinner instead. */
 @media (prefers-reduced-motion: reduce) { .scrim-box .mascot { display: none !important; } .scrim-box .spinner { display: block; animation-duration: 2.4s; } }
 
@@ -429,8 +444,13 @@ i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: no
 .suggestRow label { display: flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; }
 .suggestRow .tip { flex: none; }
 .suggestRow select { width: auto; flex: 1 1 auto; min-width: 0; }
-#cncSuggest { white-space: nowrap; flex: none; padding: 0 10px; }
+/* Find the smallest size: a square icon button with the Suggest size wand, which pulses while it searches. */
+.iconBtn { flex: none; width: var(--control-h); padding: 0; }
+.iconBtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 #cncSuggest:disabled { cursor: progress; }
+#cncSuggest.busy svg { animation: searchPulse 0.9s ease-in-out infinite alternate; }
+@keyframes searchPulse { to { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { #cncSuggest.busy svg { animation: none; } }
 
 /* Bits: a preset bit is locked and shows a summary; a custom bit shows its fields. */
 .toolName:has(.presetInfo) { grid-template-columns: 1fr auto var(--control-h-sm); align-items: center; }
@@ -466,3 +486,46 @@ i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: no
 .libGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); }
 .libEdit textarea { width: 100%; padding: var(--sp-2); border: 1px solid var(--field-line); border-radius: var(--r-ctl); background: var(--field-bg); font: inherit; }
 @media (max-width: 640px) { .libBody { grid-template-columns: 1fr; } .libFolders { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); } .libGrid { grid-template-columns: 1fr 1fr; } }
+
+/* Parts step: the model as designed, no animation controls. */
+#viewPane.plain .player { display: none; }
+
+/* Parts step: the model as designed, no animation controls. */
+#viewPane.plain .player { display: none; }
+
+/* First pack waits for the user: a centred prompt on the empty Layout step. */
+.packPrompt button { margin-top: var(--sp-3); min-width: 140px; }
+
+/* CNC sheet: a small chip under the size fields that fills them with what the GORDIX table reaches. */
+.sheetChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.areaChip {
+  display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px;
+  border: 1px solid var(--field-line); border-radius: 999px; background: var(--field-bg);
+  color: var(--muted); font-size: var(--fs-xs); cursor: pointer;
+}
+.areaChip svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.areaChip:hover { border-color: var(--muted); color: var(--ink); }
+.areaChip.on { border-color: var(--accent); color: var(--accent); }
+#cncUseTable.on { cursor: default; }
+/* Suggest size opens this box under the chips: the stock to cut from, the search, and its result. */
+.suggestBox { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-2); border: 1px solid var(--field-line); border-radius: var(--r-ctl); background: var(--bg); }
+/* The Suggest size wand: a stroked stick with filled sparkles, so the stars read at 13–16 px. */
+svg.wand .spark { fill: currentColor; stroke: none; }
+/* Units: a small mm / in switch at the right of the tab bar, and the same choice in the first-visit chooser. */
+.unitSeg { flex: none; margin-left: var(--sp-3); }
+.unitSeg button { min-height: 26px; padding: 0 10px; font-size: var(--fs-xs); }
+.chooserUnits { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-3); margin-top: var(--sp-4); font-size: var(--fs-sm); color: var(--muted); }
+.chooserUnits .seg { width: 160px; }
+/* Tooltip drawings (tipArt.ts): line art in the bubble's own colours, with the accent for the bit. */
+.tipBubble.hasArt { width: 260px; max-width: calc(100vw - 16px); display: grid; gap: 6px; }
+.tipArt { display: block; width: 100%; height: auto; }
+.tipArt .m { fill: color-mix(in srgb, currentColor 16%, transparent); stroke: currentColor; stroke-width: 1.2; }
+.tipArt .p { fill: color-mix(in srgb, currentColor 28%, transparent); stroke: currentColor; stroke-width: 1.2; }
+.tipArt .c { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
+.tipArt .d { fill: none; stroke: currentColor; stroke-width: 1; stroke-dasharray: 3 2; opacity: 0.75; }
+.tipArt .bit { fill: color-mix(in srgb, var(--accent) 35%, transparent); stroke: var(--accent); stroke-width: 1.5; }
+.tipArt .cap { fill: currentColor; font-size: 9.5px; opacity: 0.8; }
+/* A section heading with a small action on the same line (G-code: Job · Change in Layout). */
+.sectionHead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.sectionHead h2 { margin: 0; }
+.ghost.small { min-height: 26px; padding: 0 var(--sp-2); font-size: var(--fs-xs); }

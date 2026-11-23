@@ -260,6 +260,9 @@ export class View3D {
     this.playing = { from, t0: performance.now(), dur: dur * (1 - from) };
   }
 
+  /** Show or hide the cut sheets; the Import step shows only the model. */
+  showSheets(on: boolean) { this.sheetGroup.visible = on; }
+
   pause() { this.playing = null; }
   get isPlaying() { return this.playing !== null; }
 
