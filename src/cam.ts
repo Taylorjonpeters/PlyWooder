@@ -99,6 +99,8 @@ export type CamSettings = {
    * How far the "Air cut G-code" download raises the job, mm. The normal files are never raised.
    */
   airLift: number;
+  /** How far below Z0 the "Draw bounds with pen" file pushes the pen, mm, so it presses on the material. */
+  penDepth: number;
   /**
    * The lift writeGcode applies, mm: 0 for the real files, airLift for the air cut download. Set
    * per download by the G-code view, never saved as a standing setting.
@@ -140,7 +142,7 @@ export const CAM_DEFAULTS: CamSettings = {
   stockActual: {}, fitAllowance: 0, dogbones: false,
   throughExtra: 0.5, safeZ: 2, stepover: 0.4, ramp: false, rampAngle: 10,
   tabs: true, tabsOnHoles: true, tabHeight: 3, tabWidth: 5, tabSpacing: 400,
-  labels: false, labelHeight: 12, laserFeed: 1000, laserPower: 60, airCut: 0, airLift: 25,
+  labels: false, labelHeight: 12, laserFeed: 1000, laserPower: 60, airCut: 0, airLift: 25, penDepth: 1,
 };
 
 export type OpKind = 'label' | 'pocket' | 'hole' | 'outline';
@@ -253,6 +255,28 @@ export function gordixFit(t: GordixTable) {
 }
 
 export const GORDIX_Z_TRAVEL = 30;
+
+/**
+ * The GORDIX drives on the surface under it. When the stock is smaller than the table's work area,
+ * the stock alone is that surface, and Studio's work-area formula applied to the stock gives how
+ * far from its centre the machine can go before it runs off an edge: `x`/`y` are half-ranges along
+ * the sheet's own axes, `edge` the distance in from the stock's edges that has to stay clear of
+ * toolpaths (the larger of the two sides). Null when this doesn't apply: another machine, or a
+ * sheet as big as the table's work area, which means the table is covered.
+ */
+export function stockSupport(sheet: { w: number; h: number }, cfg: CamSettings) {
+  if (cfg.machine !== 'gordix') return null;
+  const f = gordixFit(currentTable(cfg));
+  if (sheet.w >= f.x * 2 - 1 && sheet.h >= f.y * 2 - 1) return null;
+  const r = gordixRange(sheet.w, sheet.h);
+  const edge = Math.max(sheet.w / 2 - r.x, sheet.h / 2 - r.y);
+  return { x: r.x, y: r.y, edge: Math.ceil(edge) };
+}
+
+/** True when any move (travel included: the machine drives there too) leaves the stock's support. */
+export function leavesSupport(moves: { x: number; y: number }[], sheet: { w: number; h: number }, s: { x: number; y: number }) {
+  return moves.some((m) => Math.abs(m.x - sheet.w / 2) > s.x + 0.01 || Math.abs(m.y - sheet.h / 2) > s.y + 0.01);
+}
 
 const toolById = (cfg: CamSettings, id: string): Tool => cfg.tools.find((t) => t.id === id) ?? cfg.tools[0] ?? DEFAULT_TOOLS[0];
 

@@ -547,6 +547,7 @@ function syncWorkflow() {
   const gordix = c.machine === 'gordix';
   $<HTMLSelectElement>('cncMachine').value = c.machine;
   $('cncTableRow').hidden = !gordix;
+  $('gordixEdgeHint').hidden = !gordix;
   $('cncTableBtns').hidden = !gordix;
   $<HTMLButtonElement>('cncResetTables').disabled = !c.tablesFile;
   $('cncLoadTables').dataset.tip = c.tablesFile ? `Tables from ${c.tablesFile}` : "Exported from GORDIX Studio's table setup page";

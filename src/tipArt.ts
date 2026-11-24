@@ -85,12 +85,21 @@ export const TIP_ART: Record<string, string> = {
     <path class="d" d="M200 22V44"/><text class="cap" x="204" y="37">lift</text>
     ${cap(120, 'The whole job runs above the material')}`),
 
-  // Top view: one loop around everything the job cuts.
+  // Top view: the bit waits over the stock's lower-left corner.
   bounds: svg(`
     <rect class="m" x="20" y="6" width="200" height="66"/>
-    <rect class="p" x="44" y="16" width="56" height="30"/><rect class="p" x="108" y="16" width="44" height="46"/><rect class="p" x="44" y="52" width="56" height="10"/>
-    <rect class="c" x="38" y="11" width="120" height="56"/>
-    ${cap(120, 'One loop around everything that gets cut')}`),
+    <rect class="p" x="44" y="16" width="56" height="30"/><rect class="p" x="108" y="16" width="44" height="46"/>
+    <path class="d" d="M20 72L60 40"/>
+    <circle class="bit" cx="20" cy="72" r="5"/>
+    ${cap(120, 'The bit stops over the stock\'s corner')}`),
+
+  // Top view: the pen draws a bracket at the stock's left edge.
+  penBounds: svg(`
+    <rect class="d" x="20" y="6" width="200" height="66"/>
+    <rect class="p" x="44" y="16" width="56" height="30"/><rect class="p" x="108" y="16" width="44" height="46"/>
+    <path class="c" d="M60 6H20V72H60"/>
+    <path class="bit" d="M60 72l14-22 6 4-14 22-7 3z"/>
+    ${cap(120, 'A pen line along the stock\'s left edge')}`),
 
   // Manual cut: the saw blade takes a strip of wood between neighbours.
   kerf: svg(`
