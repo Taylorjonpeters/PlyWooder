@@ -20,6 +20,7 @@ import { axesSvg } from './axesSvg';
 import { gordixBadge } from './gordixBadge';
 import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
+import { PROJECT_EXT, autosaveSource, autosaveView, clearAutosave, decodeProject, encodeProject, readAutosave, type Project, type ProjectSource } from './project';
 
 type Settings = NestSettings & {
   units: Units;
@@ -78,9 +79,13 @@ function camSettings(saved?: Partial<CamSettings>): CamSettings {
   };
 }
 
-function loadSettings(): Settings {
+const loadSettings = (): Settings => {
+  try { return mergeSettings(JSON.parse(localStorage.getItem(STORE) ?? '{}')); } catch { return mergeSettings({}); }
+};
+
+/** Saved settings (from this browser or a project file) over the defaults, upgraded from older shapes. */
+function mergeSettings(saved: any): Settings {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORE) ?? '{}');
     const merged = { ...DEFAULTS, ...saved, cnc: { ...DEFAULTS.cnc, ...saved.cnc }, cam: camSettings(saved.cam) };
     // Settings saved before DXF units followed the display units: a differing choice was deliberate.
     if (saved.dxfUnitsExplicit === undefined && saved.dxfUnits && saved.dxfUnits !== saved.units) merged.dxfUnitsExplicit = true;
@@ -123,6 +128,8 @@ const getOcct = () => (occtPromise ??= occtimportjs({ locateFile: () => occtWasm
 
 /** The open DXF's text, kept so thickness or units can be changed without reopening it. */
 let dxfText: string | null = null;
+/** The open file's contents, for autosave and project files. */
+let source: ProjectSource | null = null;
 
 // A scrim with the animated logo for work slow enough to notice (same as fuzzyspiral). It appears
 // only after a short delay, so quick updates never flash it. "stage" covers the main area and
@@ -156,22 +163,22 @@ async function openFile(file: File) {
   setStatus(`Reading ${file.name}…`, true);
   const endRead = startWork(`Reading ${file.name}…`, 'screen');
   // A file that fails to open must leave the previous one working.
-  const prev = { text: dxfText, name: state.fileName };
+  const prev = { text: dxfText, name: state.fileName, source };
   try {
-    if (/\.dxf$/i.test(file.name)) {
-      dxfText = await file.text();
-      state.fileName = file.name;
-      loadDxf();
+    if (file.name.toLowerCase().endsWith(PROJECT_EXT)) {
+      await applyProject(decodeProject(await file.text()));
     } else {
-      const [occt, buf] = await Promise.all([getOcct(), file.arrayBuffer()]);
-      dxfText = null;
-      state.fileName = file.name;
-      loadParts(partsFromStep(occt, new Uint8Array(buf)));
+      const src: ProjectSource = /\.dxf$/i.test(file.name)
+        ? { name: file.name, kind: 'dxf', data: await file.text() }
+        : { name: file.name, kind: 'step', data: new Uint8Array(await file.arrayBuffer()) };
+      await loadSource(src);
     }
+    if (source) { autosaveSource(source); autosaveView(currentView()); }
   } catch (err) {
     console.error(err);
     dxfText = prev.text;
     state.fileName = prev.name;
+    source = prev.source;
     showError(`Couldn't open ${file.name}. ${(err as Error).message}`);
     setEmpty(!!state.parts.length);
     updateRepack();
@@ -179,6 +186,74 @@ async function openFile(file: File) {
   } finally {
     endRead();
   }
+}
+
+/** Parse a STEP or DXF and show its parts. */
+async function loadSource(src: ProjectSource) {
+  if (src.kind === 'dxf') {
+    dxfText = src.data as string;
+    state.fileName = src.name;
+    loadDxf();
+  } else {
+    const occt = await getOcct();
+    dxfText = null;
+    state.fileName = src.name;
+    // occt reads from its own copy, but keep the saved bytes untouched regardless.
+    loadParts(partsFromStep(occt, (src.data as Uint8Array).slice()));
+  }
+  source = src;
+}
+
+/** Open a saved or autosaved project: its settings, file, part choices, layout and tab. */
+async function applyProject(p: Project) {
+  if (p.settings) {
+    Object.assign(state.settings, mergeSettings(p.settings));
+    saveSettings();
+  }
+  await loadSource(p.source);
+  for (const [id, c] of p.choices) {
+    if (state.choices.has(id)) state.choices.set(id, { include: !!c.include, qty: Math.max(0, Math.min(99, Math.round(Number(c.qty) || 0))) });
+  }
+  syncControls();
+  renderParts();
+  if (p.packRequested) { state.packRequested = true; repack(); }
+  showTab((['3d', 'sheets', 'gcode', 'visualize'] as Tab[]).includes(p.tab as Tab) ? (p.tab as Tab) : '3d');
+  updateRepack();
+}
+
+const currentView = () => ({ choices: [...state.choices], packRequested: state.packRequested, tab: state.tab });
+
+let autosaveTimer = 0;
+/** Save the part choices, layout step and tab shortly after they change, so a reload keeps them. */
+function scheduleAutosave() {
+  if (restoring || !source) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = window.setTimeout(() => autosaveView(currentView()), 300);
+}
+
+/** True while the autosave is being read back, so half-restored state isn't saved over it. */
+let restoring = false;
+async function restoreAutosave() {
+  restoring = true;
+  const saved = await readAutosave();
+  if (!saved) { restoring = false; return; }
+  const endRead = startWork(`Opening ${saved.source.name}…`, 'screen');
+  try {
+    await applyProject(saved);
+  } catch (err) {
+    console.error('Autosaved project could not be restored', err);
+    clearAutosave();
+  } finally {
+    restoring = false;
+    endRead();
+  }
+}
+
+/** Download the whole project (settings, the file, part choices) as one file to reopen later. */
+function saveProject() {
+  if (!source) return;
+  const text = encodeProject({ ...currentView(), source, settings: state.settings });
+  download(`${baseName()}${PROJECT_EXT}`, text, 'application/json');
 }
 
 /** A message under the tabs, visible on every tab, until the next file opens or it is dismissed. */
@@ -209,6 +284,7 @@ function loadParts(parts: Part[]) {
   state.shown = null;
   $('fileName').textContent = state.fileName;
   $('fileHint').textContent = `${parts.length} ${parts.length === 1 ? 'part' : 'parts'} · click to open another`;
+  $<HTMLButtonElement>('saveProject').disabled = false;
   $('dxfOpts').hidden = dxfText === null;
   syncControls();
   renderParts();
@@ -365,6 +441,7 @@ function setStatus(text: string, busy = false) {
 
 function saveSettings() {
   try { localStorage.setItem(STORE, JSON.stringify(state.settings)); } catch { /* storage unavailable */ }
+  scheduleAutosave();
 }
 
 // ---------------------------------------------------------------------------
@@ -489,6 +566,11 @@ function bindControls() {
   for (const b of document.querySelectorAll<HTMLButtonElement>('.tabs button[data-tab]')) {
     b.addEventListener('click', () => showTab(b.dataset.tab as Tab));
   }
+  $('saveProject').addEventListener('click', saveProject);
+  $('openProject').addEventListener('click', () => $<HTMLInputElement>('file').click());
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); }
+  });
   $('repack').addEventListener('click', repack);
   $('packBtn').addEventListener('click', () => { state.packRequested = true; repack(); });
   $('errorClose').addEventListener('click', clearError);
@@ -769,6 +851,7 @@ function showTab(tab: Tab) {
   $('camSettings').hidden = tab !== 'gcode';
   if (tab === 'gcode') cam.render();
   autoplay3d();
+  scheduleAutosave();
 }
 
 function renderParts() {
@@ -1143,5 +1226,6 @@ bindControls();
 syncControls();
 render();
 if (isCnc()) cncDisclaimer();
+restoreAutosave();
 // Expose a loader for scripted testing (e.g. from the browser console).
 (window as unknown as { plywooderOpen: typeof openFile }).plywooderOpen = openFile;

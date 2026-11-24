@@ -37,10 +37,14 @@
             <button data-v="cnc">CNC router</button>
           </div>
           <label class="drop" id="drop">
-            <input type="file" id="file" accept=".step,.stp,.dxf,.STEP,.STP,.DXF" hidden />
+            <input type="file" id="file" accept=".step,.stp,.dxf,.STEP,.STP,.DXF,.plywooder" hidden />
             <strong id="fileName">Open a STEP or DXF file</strong>
             <span id="fileHint">or drop it anywhere</span>
           </label>
+          <div class="pair" id="projectBtns">
+            <button class="ghost small" id="saveProject" type="button" disabled data-tip="Download this project (file, parts and settings) to reopen later. Your work also saves in this browser automatically. Shortcut: Ctrl/⌘ S"><svg class="ico" aria-hidden="true"><use href="#i-save" /></svg> Save project</button>
+            <button class="ghost small" id="openProject" type="button" data-tip="Open a .plywooder project you saved">Open project…</button>
+          </div>
           <div class="dxfOpts" id="dxfOpts" hidden>
             <div class="row2">
               <label>Thickness <input type="number" id="importThickness" step="any" min="0.1" /></label>
@@ -322,7 +326,7 @@
         <span class="spinner" aria-hidden="true"></span><span id="scrimLabel"></span>
       </div>
     </div>
-    <div class="dropOverlay" id="dropOverlay">Drop a STEP or DXF file</div>
+    <div class="dropOverlay" id="dropOverlay">Drop a STEP, DXF or .plywooder project</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
