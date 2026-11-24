@@ -17,6 +17,7 @@ import { setPlayState } from './icons';
 import { View3D, type Sheet3D, type SheetPlacement } from './view3d';
 import { fmtLen, toUnits, fromUnits, type Units } from './units';
 import { axesSvg } from './axesSvg';
+import { gordixBadge } from './gordixBadge';
 import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
 
@@ -853,7 +854,7 @@ function render() {
         </div>
         ${cncView ? '' : throughStats(plan, shapes)}
         ${cncView && s.showCuts ? cutStats(sh.network) : ''}
-        ${sheetSvg(shapes, !cncView && s.showThrough ? plan.cuts : [], cncView && s.showCuts ? sh.network : undefined)}
+        ${sheetSvg(shapes, !cncView && s.showThrough ? plan.cuts : [], cncView && s.showCuts ? sh.network : undefined, cncView ? gordixTurn(s.cam) : null)}
         ${!cncView && plan.cuts.length ? `<details class="steps"><summary>Through-cut order</summary><ol>${plan.cuts.map((c) => `<li>${esc(cutText(c))}</li>`).join('')}</ol></details>` : ''}`;
       card.querySelector('[data-x="dxf"]')!.addEventListener('click', () =>
         download(`${baseName()}_${g.thickness}mm_sheet${si + 1}.dxf`, toDxf([dxfSheet(gi, si)], s.dxfUnits), 'application/dxf'));
@@ -951,7 +952,17 @@ function cutStats(net?: CutNetwork): string {
   </div>`;
 }
 
-function sheetSvg(shapes: PlacedShape[], cuts: ThroughCut[], net?: CutNetwork): string {
+/**
+ * How the GORDIX sits on a layout sheet, in quarter turns clockwise (see gordixBadge), or null for
+ * another machine. The layout always has the sheet's long side across; the G-code turns it 90° on a
+ * table whose X reach is the shorter one (src/gcode.ts, machineFrame).
+ */
+function gordixTurn(c: CamSettings): 0 | 1 | null {
+  if (c.machine !== 'gordix') return null;
+  return c.origin === 'center' && gordixFit(currentTable(c)).rotate ? 1 : 0;
+}
+
+function sheetSvg(shapes: PlacedShape[], cuts: ThroughCut[], net?: CutNetwork, gordix: 0 | 1 | null = null): string {
   const s = view();
   const W = s.sheetW, H = s.sheetH;
   const y = (v: number) => (H - v).toFixed(1);
@@ -997,10 +1008,15 @@ function sheetSvg(shapes: PlacedShape[], cuts: ThroughCut[], net?: CutNetwork): 
     const rot = vertical ? ` transform="rotate(-90 ${cx} ${cy})"` : '';
     out.push(`<text class="lbl" x="${cx}" y="${cy}" font-size="${size.toFixed(1)}" text-anchor="middle"${rot}>${esc(name)}<tspan class="d" x="${cx}" dy="${(size * 1.15).toFixed(1)}" font-size="${(size * 0.8).toFixed(1)}">${fmtLen(sh.part.w, s.units, false)} × ${fmtLen(sh.part.h, s.units, s.units === 'in')}</tspan></text>`);
   }
-  // X and Y from the sheet's lower-left corner, where X0 Y0 is, in the margin around it.
-  out.push(axesSvg({ x: -pad * 0.5, y: H + pad * 0.5 }, [1, 0], [0, -1], pad));
+  // The machine's X and Y. Normally from the sheet's lower-left corner, X right and Y up. When the
+  // G-code turns the sheet 90° on a GORDIX, machine X runs down this drawing and Y to the right,
+  // from the top-left corner (the stock corner the registration file moves to).
+  out.push(gordix === 1
+    ? axesSvg({ x: -pad * 0.5, y: -pad * 0.5 }, [0, 1], [1, 0], pad)
+    : axesSvg({ x: -pad * 0.5, y: H + pad * 0.5 }, [1, 0], [0, -1], pad));
   out.push('</svg>');
-  return out.join('');
+  if (gordix === null) return out.join('');
+  return `<div class="sheetFig">${out.join('')}${gordixBadge(gordix)}</div>`;
 }
 
 function onSeg(a: Pt, b: Pt, p: Pt) {

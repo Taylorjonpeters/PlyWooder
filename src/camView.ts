@@ -8,6 +8,7 @@ import { BitLibraryModal } from './bitLibraryView';
 import { icon, setPlayState } from './icons';
 import { fmtLen, type Units } from './units';
 import { axesSvg } from './axesSvg';
+import { gordixBadge } from './gordixBadge';
 
 /** One sheet of the current layout, as the workspace sees it. */
 /**
@@ -370,6 +371,11 @@ export class CamWorkspace {
     svg.setAttribute('viewBox', `${-pad} ${-pad} ${vw + 2 * pad} ${vh + 2 * pad}`);
     svg.innerHTML = `<g${turned ? ` transform="matrix(0 -1 1 0 0 ${w})"` : ''}>${parts.join('')}</g>`
       + axesSvg({ x: -o, y: vh + o }, [1, 0], [0, -1], pad);
+    // The preview is in machine coordinates, so the GORDIX always faces north (up) here.
+    const badge = svg.parentElement!.querySelector('.gordixBadge');
+    if (cfg.machine === 'gordix') {
+      if (badge) badge.outerHTML = gordixBadge(0); else svg.insertAdjacentHTML('afterend', gordixBadge(0));
+    } else badge?.remove();
   }
 
   /** SVG paths for moves [0, n): cutting moves by operation, tabs, and rapids. */
