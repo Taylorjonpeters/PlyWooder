@@ -1,8 +1,8 @@
 import {
-  planSheet, gordixFit, currentTable, stockKey, DEFAULT_TOOLS, MACHINE_LABELS,
+  planSheet, gordixFit, currentTable, stockKey, stockSupport, leavesSupport, DEFAULT_TOOLS, MACHINE_LABELS,
   type CamJob, type CamSettings, type CamSheet, type Move, type OpKind, type Tool,
 } from './cam';
-import { writeGcode, writeBoundsGcode, estimateSeconds, cutLength, MACHINES } from './gcode';
+import { writeGcode, writeBoundsGcode, writePenBoundsGcode, estimateSeconds, cutLength, MACHINES } from './gcode';
 import { tip } from './tip';
 import { BitLibraryModal } from './bitLibraryView';
 import { icon, setPlayState } from './icons';
@@ -233,13 +233,18 @@ export class CamWorkspace {
     const stale = this.host.stale();
     for (const b of host.querySelectorAll<HTMLButtonElement>('[data-dl]')) {
       b.disabled = stale;
-      b.addEventListener('click', () => { const i = Number(b.dataset.dl); this.host.download(this.fileName(ref, i), this.text(ref, i)); });
+      b.addEventListener('click', () => {
+        const i = Number(b.dataset.dl);
+        this.checkSupport(ref, [i], () => this.host.download(this.fileName(ref, i), this.text(ref, i)));
+      });
     }
     (this.$('camDownloadAll') as HTMLButtonElement).disabled = !job.files.length || stale;
     const bounds = document.getElementById('camBounds') as HTMLButtonElement | null;
     if (bounds) bounds.disabled = this.boundsBlocked();
     const air = document.getElementById('camAirDl') as HTMLButtonElement | null;
     if (air) air.disabled = this.boundsBlocked();
+    const pen = document.getElementById('camPenBounds') as HTMLButtonElement | null;
+    if (pen) pen.disabled = this.boundsBlocked();
   }
 
   /** The bounds file needs a planned, up-to-date job with something to cut. */
@@ -254,7 +259,19 @@ export class CamWorkspace {
       cfg: { ...this.host.settings(), airCut: 0 }, sheetW: ref.sheet.w, sheetH: ref.sheet.h, title: ref.label,
       stock: this.job.stock, cutDepth: this.job.cutDepth,
     });
-    if (text) this.host.download(`${ref.fileBase}_bounds.gcode`, text);
+    // It goes to the stock's corner, which is always past what the stock alone supports.
+    if (text) this.checkSupport(ref, 'edge', () => this.host.download(`${ref.fileBase}_bounds.gcode`, text));
+  }
+
+  /** Pen plotter file that draws the rectangle the cuts reach on the material. */
+  private downloadPenBounds() {
+    const ref = this.host.sheets()[this.index];
+    if (!ref || !this.job || this.boundsBlocked()) return;
+    const text = writePenBoundsGcode(this.job.files, {
+      cfg: { ...this.host.settings(), airCut: 0 }, sheetW: ref.sheet.w, sheetH: ref.sheet.h, title: ref.label,
+      stock: this.job.stock, cutDepth: this.job.cutDepth,
+    });
+    if (text) this.checkSupport(ref, 'edge', () => this.host.download(`${ref.fileBase}_pen_bounds.gcode`, text));
   }
 
   /**
@@ -265,14 +282,61 @@ export class CamWorkspace {
     const ref = this.host.sheets()[this.index];
     if (!ref || !this.job || this.boundsBlocked()) return;
     const router = this.job.files.map((f, i) => (f.kind === 'router' ? i : -1)).filter((i) => i >= 0);
-    router.forEach((i, k) => setTimeout(() => this.host.download(this.fileName(ref, i, true), this.text(ref, i, true)), k * 400));
+    this.checkSupport(ref, router, () =>
+      router.forEach((i, k) => setTimeout(() => this.host.download(this.fileName(ref, i, true), this.text(ref, i, true)), k * 400)));
   }
 
   private downloadAll() {
     const ref = this.host.sheets()[this.index];
     if (!ref || !this.job) return;
     // Browsers drop rapid back-to-back downloads, so space them out.
-    this.job.files.forEach((_, i) => setTimeout(() => this.host.download(this.fileName(ref, i), this.text(ref, i)), i * 400));
+    this.checkSupport(ref, this.job.files.map((_, i) => i), () =>
+      this.job!.files.forEach((_, i) => setTimeout(() => this.host.download(this.fileName(ref, i), this.text(ref, i)), i * 400)));
+  }
+
+  /**
+   * On the GORDIX, warn before a download whose moves (`files`, or `'edge'` for the dry run files
+   * that go to the stock's edge) leave what the stock alone can carry the machine over. The user
+   * can add scrap around the stock and download anyway, or go back to the Layout step's margins.
+   */
+  private checkSupport(ref: CamSheetRef, files: number[] | 'edge', go: () => void) {
+    const s = stockSupport(ref.sheet, this.host.settings());
+    const crosses = s && (files === 'edge' || files.some((i) => leavesSupport(this.job!.files[i].moves, ref.sheet, s)));
+    if (!s || !crosses) { go(); return; }
+    const root = document.createElement('div');
+    root.className = 'modal';
+    root.innerHTML = `<div class="modalBox supportBox" role="alertdialog" aria-modal="true" aria-labelledby="supportTitle" aria-describedby="supportText">
+        <header class="modalHead"><h2 id="supportTitle">Tool path crosses bounds of stock</h2></header>
+        <div class="supportBody" id="supportText">
+          <p>Please add scrap for support, or keep parts ${this.len(s.edge)} from the stock's edges.</p>
+        </div>
+        <footer class="modalFoot">
+          <button class="ghost" type="button" data-act="cancel">Cancel</button>
+          <span>
+            <button class="ghost" type="button" data-act="margin">Change safe area</button>
+            <button class="primary" type="button" data-act="scrap" title="Downloads the file. Put scrap around the stock before running it.">Add scrap</button>
+          </span>
+        </footer>
+      </div>`;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    const close = () => { document.removeEventListener('keydown', onKey); root.remove(); };
+    root.addEventListener('mousedown', (e) => { if (e.target === root) close(); });
+    root.addEventListener('click', (e) => {
+      const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+      if (!act) return;
+      close();
+      if (act === 'scrap') go();
+      else if (act === 'margin') {
+        this.host.showLayout();
+        const m = document.getElementById('edgeMargin') as HTMLInputElement | null;
+        m?.scrollIntoView({ block: 'center' });
+        m?.focus();
+        m?.select();
+      }
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(root);
+    (root.querySelector('[data-act="scrap"]') as HTMLElement).focus();
   }
 
   // -------------------------------------------------------------------------
@@ -492,9 +556,11 @@ export class CamWorkspace {
         <h2>Dry run</h2>
         <div class="pair">
           <button class="ghost" id="camAirDl" type="button" data-tip-art="air" data-tip="Downloads this sheet's cutting files raised ${num(Math.max(1, c.airLift))} mm, so the whole job runs in the air and nothing touches the material. Laser label files are left out." ${this.boundsBlocked() ? 'disabled' : ''}>Air cut G-code</button>
-          <button class="ghost" id="camBounds" type="button" data-tip-art="bounds" data-tip="Downloads one file that moves the bit once around the outline of this sheet's cuts, at safe height with nothing switched on, so you can see where the job lands." ${this.boundsBlocked() ? 'disabled' : ''}>Bounds G-code</button>
+          <button class="ghost" id="camBounds" type="button" data-tip-art="bounds" data-tip="Downloads one file that moves the bit to the stock sheet's lower-left corner at safe height and stops there, with nothing switched on, so you can line the stock's corner up under it." ${this.boundsBlocked() ? 'disabled' : ''}>Bounds G-code</button>
         </div>
+        <button class="ghost" id="camPenBounds" type="button" data-tip-art="penBounds" data-tip="Downloads a pen plotter file that draws the stock sheet's left edge, with 10 cm of its top and bottom edges, so you can place the stock against it. Put a pen in the machine and zero Z with its tip touching the surface; it draws ${num(c.penDepth)} mm below that. Nothing is cut." ${this.boundsBlocked() ? 'disabled' : ''}>Draw stock edge with pen</button>
         ${numIn('airLift', 'Air cut height (mm)', 1)}
+        ${numIn('penDepth', 'Pen depth below Z0 (mm)', 0, 'any', 'How far the pen file pushes the pen below Z0 so it presses on the material. Raise it if the line is faint or missing; a spring-loaded pen holder takes up the extra.')}
       </section>`;
   }
 
@@ -548,6 +614,8 @@ export class CamWorkspace {
         this.host.showLayout();
       } else if (el.id === 'camBounds') {
         this.downloadBounds();
+      } else if (el.id === 'camPenBounds') {
+        this.downloadPenBounds();
       } else if (el.id === 'camAirDl') {
         this.downloadAir();
       } else if (el.id === 'camLibrary') {

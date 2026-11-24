@@ -468,6 +468,10 @@ i.op.tab { background: var(--accent); height: 5px; } i.op.rapid { background: no
 .modalFoot { border-top: 1px solid var(--line); }
 .modalHead h2 { margin: 0; font-size: var(--fs-lg); }
 .modalFoot span, .libHead span { display: flex; gap: var(--sp-2); }
+.supportBox { width: min(480px, 100%); }
+.supportBody { padding: var(--sp-3) var(--sp-4); }
+.supportBody p { margin: 0 0 var(--sp-2); }
+.supportBody p:last-child { margin-bottom: 0; }
 .libBody { display: grid; grid-template-columns: 200px 1fr; min-height: 0; flex: 1; }
 .libFolders { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); border-right: 1px solid var(--line); overflow-y: auto; }
 .libFolder { display: flex; justify-content: space-between; text-align: left; padding: 6px var(--sp-2); border: 1px solid transparent; border-radius: var(--r-ctl); background: none; color: var(--ink); cursor: pointer; }
