@@ -529,8 +529,34 @@ function setWorkflow(w: Workflow) {
   $('chooser').hidden = true;
   syncControls();
   if (state.tab === 'gcode' && w === 'saw') showTab('sheets');
+  if (w === 'cnc') cncDisclaimer();
   if (changed && state.parts.length) repack();
   else saveSettings();
+}
+
+const DISCLAIMER_SEEN = 'plywooder-cnc-disclaimer';
+
+/** Once per browser session, say the G-code tools are still being tested before anyone runs them. */
+function cncDisclaimer() {
+  try { if (sessionStorage.getItem(DISCLAIMER_SEEN)) return; sessionStorage.setItem(DISCLAIMER_SEEN, '1'); } catch { /* storage unavailable */ }
+  if (document.getElementById('cncDisclaimer')) return;
+  const root = document.createElement('div');
+  root.className = 'modal';
+  root.id = 'cncDisclaimer';
+  root.innerHTML = `<div class="modalBox supportBox" role="alertdialog" aria-modal="true" aria-labelledby="disclaimerTitle" aria-describedby="disclaimerText">
+      <header class="modalHead"><h2 id="disclaimerTitle">Still in testing</h2></header>
+      <div class="supportBody" id="disclaimerText">
+        <p>I started building this for my recently received GORDIX CNC. That said, I'm still testing all the features related to G-code creation, so use at your own discretion!</p>
+      </div>
+      <footer class="modalFoot"><span></span><button class="primary" type="button">Got it</button></footer>
+    </div>`;
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+  const close = () => { document.removeEventListener('keydown', onKey); root.remove(); };
+  root.addEventListener('mousedown', (e) => { if (e.target === root) close(); });
+  root.querySelector('button')!.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(root);
+  root.querySelector('button')!.focus();
 }
 
 /** Show the controls for the current workflow, and fill the CNC section from the shared settings. */
@@ -1100,5 +1126,6 @@ initTips();
 bindControls();
 syncControls();
 render();
+if (isCnc()) cncDisclaimer();
 // Expose a loader for scripted testing (e.g. from the browser console).
 (window as unknown as { plywooderOpen: typeof openFile }).plywooderOpen = openFile;
