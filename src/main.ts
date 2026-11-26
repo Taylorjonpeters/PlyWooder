@@ -17,6 +17,7 @@ import { setPlayState } from './icons';
 import { View3D, type Sheet3D, type SheetPlacement } from './view3d';
 import { fmtLen, toUnits, fromUnits, type Units } from './units';
 import { axesSvg } from './axesSvg';
+import { saveFiles } from './save';
 import { gordixBadge } from './gordixBadge';
 import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
@@ -90,7 +91,10 @@ function mergeSettings(saved: any): Settings {
     // Settings saved before DXF units followed the display units: a differing choice was deliberate.
     if (saved.dxfUnitsExplicit === undefined && saved.dxfUnits && saved.dxfUnits !== saved.units) merged.dxfUnitsExplicit = true;
     // The sheet used to be "the table's work area" or a custom size; now it is always the size fields.
-    if (merged.cnc.sheet === 'table' && merged.cam.machine === 'gordix') {
+    // Only settings saved that way, or a first visit, start from the work area. Reading it from the
+    // merged defaults instead would reset every saved size to the work area on each load.
+    const savedSheet = saved.cnc ? saved.cnc.sheet : DEFAULTS.cnc.sheet;
+    if (savedSheet === 'table' && merged.cam.machine === 'gordix') {
       const f = gordixFit(currentTable(merged.cam));
       merged.cnc.sheetW = f.x * 2;
       merged.cnc.sheetH = f.y * 2;
@@ -1159,6 +1163,7 @@ const cam = new CamWorkspace({
   },
   showLayout: () => showTab('sheets'),
   download: (name, text) => download(name, text, 'text/plain'),
+  downloadMany: (files) => saveFiles(files.map((f) => ({ ...f, type: 'text/plain' }))),
 });
 
 // ---------------------------------------------------------------------------
@@ -1208,12 +1213,9 @@ function autoplay3d() {
 
 // ---------------------------------------------------------------------------
 
+/** Save one file: a "Save as" dialog where the browser has one, otherwise a download. */
 function download(name: string, text: string, type: string) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  void saveFiles([{ name, text, type }]);
 }
 
 const baseName = () => state.fileName.replace(/\.(step|stp|dxf)$/i, '') || 'layout';

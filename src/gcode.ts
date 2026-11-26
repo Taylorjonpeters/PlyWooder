@@ -79,7 +79,11 @@ export function writeGcode(file: CamFile, ctx: WriteContext): string {
   const m = MACHINES[cfg.machine];
   const c = coord(m);
   const { at, turn, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
-  const lift = file.kind === 'router' ? Math.max(0, cfg.airCut) : 0;
+  // An air cut raises the whole job. The GORDIX refuses any Z above +3, so there it stays at the
+  // safe height instead: the bit traces every path in the air and never goes down.
+  const air = file.kind === 'router' && cfg.airCut > 0;
+  const flat = air && cfg.machine === 'gordix';
+  const lift = air && !flat ? cfg.airCut : 0;
   const out: string[] = [];
   const line = (s: string) => out.push(s);
   let f: number | null = null;
@@ -95,6 +99,7 @@ export function writeGcode(file: CamFile, ctx: WriteContext): string {
     line(`; Operations: ${file.ops.join(', ')}. Stock ${n(ctx.stock)} mm, through cuts to Z-${n(ctx.cutDepth)}.`);
     line(`; Feed ${n(t.feed)} mm/min, plunge ${n(t.plungeFeed)} mm/min, up to ${n(t.depthPerPass)} mm per pass.`);
     if (lift > 0) line(`; AIR CUT: everything is raised ${n(lift)} mm. Nothing touches the material.`);
+    if (flat) line(`; AIR CUT: Z stays at the ${n(Math.max(0.5, cfg.safeZ))} mm safe height. Nothing touches the material.`);
   }
   line(cfg.origin === 'center'
     ? `; Origin: X0 Y0 = centre of the ${n(ctx.sheetW)} x ${n(ctx.sheetH)} mm sheet${file.kind === 'router' ? ', Z0 = top of material' : ''}${cfg.machine === 'gordix' ? `. GORDIX table ${table.id} (S ${n(table.S)} x W ${n(table.W)} mm)` : ''}`
@@ -131,7 +136,7 @@ export function writeGcode(file: CamFile, ctx: WriteContext): string {
   let cx = 0, cy = 0, cz = safe;
   for (const mv of file.moves) {
     const { x, y } = at(mv);
-    const z = mv.z + lift;
+    const z = flat ? safe : mv.z + lift;
     const dx = Math.abs(x - cx) > 1e-4, dy = Math.abs(y - cy) > 1e-4, dz = Math.abs(z - cz) > 1e-4;
     if (!dx && !dy && !dz) continue;
     const xy = `${dx || (mv.rapid && dy) ? ` X${c(x)}` : ''}${dy || (mv.rapid && dx) ? ` Y${c(y)}` : ''}`;

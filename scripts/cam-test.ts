@@ -203,12 +203,21 @@ test('laser labels come first, in their own file, with M03 S255 / M05 and no Z',
   expect(!w.some((x) => x.some((y) => y[0] === 'Z')), 'laser file moves Z');
 });
 
+const zs = (t: string) => words(t).flatMap((w) => w.filter((x) => x[0] === 'Z').map((x) => Number(x.slice(1))));
+
 test('air cut raises every Z by the air-cut height', () => {
   const sheet = sheetOf([slotPanel]);
-  const [real] = gcodeOf(sheet, cfgWith());
-  const [air] = gcodeOf(sheet, cfgWith({ airCut: 25 }));
-  const minZ = (t: string) => Math.min(...words(t).flatMap((w) => w.filter((x) => x[0] === 'Z').map((x) => Number(x.slice(1)))));
+  const grbl = { machine: 'grbl' as const, origin: 'corner' as const };
+  const [real] = gcodeOf(sheet, cfgWith(grbl));
+  const [air] = gcodeOf(sheet, cfgWith({ ...grbl, airCut: 25 }));
+  const minZ = (t: string) => Math.min(...zs(t));
   expect(Math.abs(minZ(air) - (minZ(real) + 25)) < 1e-6, `air-cut min Z ${minZ(air)}, real ${minZ(real)}`);
+});
+
+test('a GORDIX air cut keeps the bit at the safe height, inside the firmware Z limit', () => {
+  const [air] = gcodeOf(sheetOf([slotPanel]), cfgWith({ airCut: 25, safeZ: 2 }));
+  expect(zs(air).every((z) => Math.abs(z - 2) < 1e-6), `Z values ${[...new Set(zs(air))].join(', ')}`);
+  expect(/AIR CUT/.test(air), 'header does not say it is an air cut');
 });
 
 test('GRBL files start the spindle, use a corner origin and end with M30', () => {
