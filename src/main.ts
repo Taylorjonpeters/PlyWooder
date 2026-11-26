@@ -17,8 +17,12 @@ import { setPlayState } from './icons';
 import { View3D, type Sheet3D, type SheetPlacement } from './view3d';
 import { fmtLen, toUnits, fromUnits, type Units } from './units';
 import { axesSvg } from './axesSvg';
+import { saveFiles } from './save';
+import { showWhatsNew, versionLabel, whatsNewOnUpdate } from './whatsNew';
+import { gordixBadge } from './gordixBadge';
 import { bbox, offsetRegions, subtract, type Poly, type Pt } from './geom';
 import type { CutNetwork } from './cutpaths';
+import { PROJECT_EXT, autosaveSource, autosaveView, clearAutosave, decodeProject, encodeProject, readAutosave, type Project, type ProjectSource } from './project';
 
 type Settings = NestSettings & {
   units: Units;
@@ -77,14 +81,21 @@ function camSettings(saved?: Partial<CamSettings>): CamSettings {
   };
 }
 
-function loadSettings(): Settings {
+const loadSettings = (): Settings => {
+  try { return mergeSettings(JSON.parse(localStorage.getItem(STORE) ?? '{}')); } catch { return mergeSettings({}); }
+};
+
+/** Saved settings (from this browser or a project file) over the defaults, upgraded from older shapes. */
+function mergeSettings(saved: any): Settings {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORE) ?? '{}');
     const merged = { ...DEFAULTS, ...saved, cnc: { ...DEFAULTS.cnc, ...saved.cnc }, cam: camSettings(saved.cam) };
     // Settings saved before DXF units followed the display units: a differing choice was deliberate.
     if (saved.dxfUnitsExplicit === undefined && saved.dxfUnits && saved.dxfUnits !== saved.units) merged.dxfUnitsExplicit = true;
     // The sheet used to be "the table's work area" or a custom size; now it is always the size fields.
-    if (merged.cnc.sheet === 'table' && merged.cam.machine === 'gordix') {
+    // Only settings saved that way, or a first visit, start from the work area. Reading it from the
+    // merged defaults instead would reset every saved size to the work area on each load.
+    const savedSheet = saved.cnc ? saved.cnc.sheet : DEFAULTS.cnc.sheet;
+    if (savedSheet === 'table' && merged.cam.machine === 'gordix') {
       const f = gordixFit(currentTable(merged.cam));
       merged.cnc.sheetW = f.x * 2;
       merged.cnc.sheetH = f.y * 2;
@@ -122,6 +133,8 @@ const getOcct = () => (occtPromise ??= occtimportjs({ locateFile: () => occtWasm
 
 /** The open DXF's text, kept so thickness or units can be changed without reopening it. */
 let dxfText: string | null = null;
+/** The open file's contents, for autosave and project files. */
+let source: ProjectSource | null = null;
 
 // A scrim with the animated logo for work slow enough to notice (same as fuzzyspiral). It appears
 // only after a short delay, so quick updates never flash it. "stage" covers the main area and
@@ -155,22 +168,22 @@ async function openFile(file: File) {
   setStatus(`Reading ${file.name}…`, true);
   const endRead = startWork(`Reading ${file.name}…`, 'screen');
   // A file that fails to open must leave the previous one working.
-  const prev = { text: dxfText, name: state.fileName };
+  const prev = { text: dxfText, name: state.fileName, source };
   try {
-    if (/\.dxf$/i.test(file.name)) {
-      dxfText = await file.text();
-      state.fileName = file.name;
-      loadDxf();
+    if (file.name.toLowerCase().endsWith(PROJECT_EXT)) {
+      await applyProject(decodeProject(await file.text()));
     } else {
-      const [occt, buf] = await Promise.all([getOcct(), file.arrayBuffer()]);
-      dxfText = null;
-      state.fileName = file.name;
-      loadParts(partsFromStep(occt, new Uint8Array(buf)));
+      const src: ProjectSource = /\.dxf$/i.test(file.name)
+        ? { name: file.name, kind: 'dxf', data: await file.text() }
+        : { name: file.name, kind: 'step', data: new Uint8Array(await file.arrayBuffer()) };
+      await loadSource(src);
     }
+    if (source) { autosaveSource(source); autosaveView(currentView()); }
   } catch (err) {
     console.error(err);
     dxfText = prev.text;
     state.fileName = prev.name;
+    source = prev.source;
     showError(`Couldn't open ${file.name}. ${(err as Error).message}`);
     setEmpty(!!state.parts.length);
     updateRepack();
@@ -178,6 +191,74 @@ async function openFile(file: File) {
   } finally {
     endRead();
   }
+}
+
+/** Parse a STEP or DXF and show its parts. */
+async function loadSource(src: ProjectSource) {
+  if (src.kind === 'dxf') {
+    dxfText = src.data as string;
+    state.fileName = src.name;
+    loadDxf();
+  } else {
+    const occt = await getOcct();
+    dxfText = null;
+    state.fileName = src.name;
+    // occt reads from its own copy, but keep the saved bytes untouched regardless.
+    loadParts(partsFromStep(occt, (src.data as Uint8Array).slice()));
+  }
+  source = src;
+}
+
+/** Open a saved or autosaved project: its settings, file, part choices, layout and tab. */
+async function applyProject(p: Project) {
+  if (p.settings) {
+    Object.assign(state.settings, mergeSettings(p.settings));
+    saveSettings();
+  }
+  await loadSource(p.source);
+  for (const [id, c] of p.choices) {
+    if (state.choices.has(id)) state.choices.set(id, { include: !!c.include, qty: Math.max(0, Math.min(99, Math.round(Number(c.qty) || 0))) });
+  }
+  syncControls();
+  renderParts();
+  if (p.packRequested) { state.packRequested = true; repack(); }
+  showTab((['3d', 'sheets', 'gcode', 'visualize'] as Tab[]).includes(p.tab as Tab) ? (p.tab as Tab) : '3d');
+  updateRepack();
+}
+
+const currentView = () => ({ choices: [...state.choices], packRequested: state.packRequested, tab: state.tab });
+
+let autosaveTimer = 0;
+/** Save the part choices, layout step and tab shortly after they change, so a reload keeps them. */
+function scheduleAutosave() {
+  if (restoring || !source) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = window.setTimeout(() => autosaveView(currentView()), 300);
+}
+
+/** True while the autosave is being read back, so half-restored state isn't saved over it. */
+let restoring = false;
+async function restoreAutosave() {
+  restoring = true;
+  const saved = await readAutosave();
+  if (!saved) { restoring = false; return; }
+  const endRead = startWork(`Opening ${saved.source.name}…`, 'screen');
+  try {
+    await applyProject(saved);
+  } catch (err) {
+    console.error('Autosaved project could not be restored', err);
+    clearAutosave();
+  } finally {
+    restoring = false;
+    endRead();
+  }
+}
+
+/** Download the whole project (settings, the file, part choices) as one file to reopen later. */
+function saveProject() {
+  if (!source) return;
+  const text = encodeProject({ ...currentView(), source, settings: state.settings });
+  download(`${baseName()}${PROJECT_EXT}`, text, 'application/json');
 }
 
 /** A message under the tabs, visible on every tab, until the next file opens or it is dismissed. */
@@ -208,6 +289,7 @@ function loadParts(parts: Part[]) {
   state.shown = null;
   $('fileName').textContent = state.fileName;
   $('fileHint').textContent = `${parts.length} ${parts.length === 1 ? 'part' : 'parts'} · click to open another`;
+  $<HTMLButtonElement>('saveProject').disabled = false;
   $('dxfOpts').hidden = dxfText === null;
   syncControls();
   renderParts();
@@ -242,10 +324,10 @@ const outlineBit = () => {
   return c.tools.find((t) => t.id === c.outlineTool) ?? c.tools[0];
 };
 
-/** The CNC sheet size (mm, long side first). */
+/** The CNC sheet size, mm: `w` along the machine's X, `h` along its Y. */
 function cncSheetSize(): { w: number; h: number } {
   const s = state.settings;
-  return { w: Math.max(s.cnc.sheetW, s.cnc.sheetH), h: Math.min(s.cnc.sheetW, s.cnc.sheetH) };
+  return { w: s.cnc.sheetW, h: s.cnc.sheetH };
 }
 
 /**
@@ -364,6 +446,7 @@ function setStatus(text: string, busy = false) {
 
 function saveSettings() {
   try { localStorage.setItem(STORE, JSON.stringify(state.settings)); } catch { /* storage unavailable */ }
+  scheduleAutosave();
 }
 
 // ---------------------------------------------------------------------------
@@ -488,6 +571,11 @@ function bindControls() {
   for (const b of document.querySelectorAll<HTMLButtonElement>('.tabs button[data-tab]')) {
     b.addEventListener('click', () => showTab(b.dataset.tab as Tab));
   }
+  $('saveProject').addEventListener('click', saveProject);
+  $('openProject').addEventListener('click', () => $<HTMLInputElement>('file').click());
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); }
+  });
   $('repack').addEventListener('click', repack);
   $('packBtn').addEventListener('click', () => { state.packRequested = true; repack(); });
   $('errorClose').addEventListener('click', clearError);
@@ -577,8 +665,7 @@ function syncWorkflow() {
   $('cncTableBtns').hidden = !gordix;
   $<HTMLButtonElement>('cncResetTables').disabled = !c.tablesFile;
   $('cncLoadTables').dataset.tip = c.tablesFile ? `Tables from ${c.tablesFile}` : "Exported from GORDIX Studio's table setup page";
-  const tables = c.tables.length ? c.tables : STUDIO_TABLES;
-  $('cncTable').innerHTML = tables.map((t) => {
+  $('cncTable').innerHTML = (c.tables.length ? c.tables : STUDIO_TABLES).map((t) => {
     const f = gordixFit(t);
     return `<option value="${t.id}">${t.id}: ${Math.round(t.S)} × ${Math.round(t.W)} mm · cuts ${f.x * 2} × ${f.y * 2} mm</option>`;
   }).join('');
@@ -610,9 +697,9 @@ function syncWorkflow() {
   $('cncSuggestEmpty').hidden = !!state.parts.length;
   const { w, h } = cncSheetSize();
   const fit = gordix ? gordixFit(currentTable(c)) : null;
-  const over = fit && (w > fit.x * 2 + 0.5 || h > fit.y * 2 + 0.5);
+  const fits = (a: number, b: number) => !fit || (a <= fit.x * 2 + 0.5 && b <= fit.y * 2 + 0.5);
   $('cncHint').innerHTML = `${fmtLen(w, s.units, false)} × ${fmtLen(h, s.units)} sheet`
-    + (over ? ` <b class="warnText">· bigger than the ${fit!.x * 2} × ${fit!.y * 2} mm it reaches</b>` : '');
+    + (fits(w, h) ? '' : ` <b class="warnText">· bigger than the ${fit!.x * 2} × ${fit!.y * 2} mm it reaches${fits(h, w) ? '. Swap X and Y to fit' : ''}</b>`);
 }
 
 /** Open or close the Suggest size box. Only one sizing chip shows as selected at a time. */
@@ -671,6 +758,10 @@ function bindCnc() {
     s.cnc.sheetH = f.y * 2;
     changed();
   });
+  $('cncSwap').addEventListener('click', () => {
+    [s.cnc.sheetW, s.cnc.sheetH] = [s.cnc.sheetH, s.cnc.sheetW];
+    changed();
+  });
   $<HTMLSelectElement>('cncBit').addEventListener('change', (e) => { s.cam.outlineTool = (e.target as HTMLSelectElement).value; changed(); });
   for (const k of ['cncW', 'cncH'] as const) {
     $<HTMLInputElement>(k).addEventListener('input', (e) => {
@@ -698,7 +789,10 @@ function suggestSize() {
   const [sw, sh] = s.cnc.stock.split('x').map(Number);
   let maxW = Math.max(sw, sh), maxH = Math.min(sw, sh);
   const fit = s.cam.machine === 'gordix' ? gordixFit(currentTable(s.cam)) : null;
-  if (fit) { maxW = Math.min(maxW, fit.x * 2); maxH = Math.min(maxH, fit.y * 2); }
+  // The search runs with the long side across. On a table that reaches further along Y, the result
+  // is stood upright so its long side runs along the machine's Y.
+  const upright = !!fit?.longY;
+  if (fit) { maxW = Math.min(maxW, (upright ? fit.y : fit.x) * 2); maxH = Math.min(maxH, (upright ? fit.x : fit.y) * 2); }
   if (maxH > maxW) [maxW, maxH] = [maxH, maxW];
   const settings = { ...nestSettings(), sheetW: maxW, sheetH: maxH };
   const extra = suggestMarginMm(s);
@@ -722,14 +816,14 @@ function suggestSize() {
     // centre the parts so the slack is even all round. The sheet count found for the tight size holds.
     const w = Math.min(maxW, r.w + 2 * extra), h = Math.min(maxH, r.h + 2 * extra);
     const capped = w < r.w + 2 * extra - 0.5 || h < r.h + 2 * extra - 0.5;
-    s.cnc.sheetW = w;
-    s.cnc.sheetH = h;
+    s.cnc.sheetW = upright ? h : w;
+    s.cnc.sheetH = upright ? w : h;
     if (extra > 0) s.centerLayout = true;
     const n = r.sheets.reduce((a, b) => a + b, 0);
     const lost = r.unplaced.reduce((a, b) => a + b, 0);
     const stockName = $<HTMLSelectElement>('cncStock').selectedOptions[0]?.text ?? 'stock';
-    const limit = fit && (fit.x * 2 < Math.max(sw, sh) || fit.y * 2 < Math.min(sw, sh)) ? `, within the ${fit.x * 2} × ${fit.y * 2} mm the table reaches` : '';
-    hint.innerHTML = `Cut ${n === 1 ? 'one piece' : `${n} pieces`}, <b>${fmtLen(w, s.units, false)} × ${fmtLen(h, s.units)}</b>, from ${n === 1 ? 'a ' : ''}${esc(stockName)} stock${limit}`
+    const limit = fit && (maxW < Math.max(sw, sh) - 0.5 || maxH < Math.min(sw, sh) - 0.5) ? `, within the ${fit.x * 2} × ${fit.y * 2} mm the table reaches` : '';
+    hint.innerHTML = `Cut ${n === 1 ? 'one piece' : `${n} pieces`}, <b>${fmtLen(s.cnc.sheetW, s.units, false)} × ${fmtLen(s.cnc.sheetH, s.units)}</b>, from ${n === 1 ? 'a ' : ''}${esc(stockName)} stock${limit}`
       + (extra > 0 ? ` · parts centred with ${capped ? 'up to ' : ''}${fmtLen(extra, s.units)} spare all round` : ` · ${(r.fill * 100).toFixed(0)}% used`)
       + (lost ? ` <b class="warnText">· ${lost} part${lost === 1 ? ' is' : 's are'} too big for it</b>` : '');
     hint.hidden = false;
@@ -768,6 +862,7 @@ function showTab(tab: Tab) {
   $('camSettings').hidden = tab !== 'gcode';
   if (tab === 'gcode') cam.render();
   autoplay3d();
+  scheduleAutosave();
 }
 
 function renderParts() {
@@ -853,7 +948,7 @@ function render() {
         </div>
         ${cncView ? '' : throughStats(plan, shapes)}
         ${cncView && s.showCuts ? cutStats(sh.network) : ''}
-        ${sheetSvg(shapes, !cncView && s.showThrough ? plan.cuts : [], cncView && s.showCuts ? sh.network : undefined)}
+        ${sheetSvg(shapes, !cncView && s.showThrough ? plan.cuts : [], cncView && s.showCuts ? sh.network : undefined, cncView && s.cam.machine === 'gordix')}
         ${!cncView && plan.cuts.length ? `<details class="steps"><summary>Through-cut order</summary><ol>${plan.cuts.map((c) => `<li>${esc(cutText(c))}</li>`).join('')}</ol></details>` : ''}`;
       card.querySelector('[data-x="dxf"]')!.addEventListener('click', () =>
         download(`${baseName()}_${g.thickness}mm_sheet${si + 1}.dxf`, toDxf([dxfSheet(gi, si)], s.dxfUnits), 'application/dxf'));
@@ -951,7 +1046,7 @@ function cutStats(net?: CutNetwork): string {
   </div>`;
 }
 
-function sheetSvg(shapes: PlacedShape[], cuts: ThroughCut[], net?: CutNetwork): string {
+function sheetSvg(shapes: PlacedShape[], cuts: ThroughCut[], net?: CutNetwork, gordix = false): string {
   const s = view();
   const W = s.sheetW, H = s.sheetH;
   const y = (v: number) => (H - v).toFixed(1);
@@ -997,10 +1092,11 @@ function sheetSvg(shapes: PlacedShape[], cuts: ThroughCut[], net?: CutNetwork): 
     const rot = vertical ? ` transform="rotate(-90 ${cx} ${cy})"` : '';
     out.push(`<text class="lbl" x="${cx}" y="${cy}" font-size="${size.toFixed(1)}" text-anchor="middle"${rot}>${esc(name)}<tspan class="d" x="${cx}" dy="${(size * 1.15).toFixed(1)}" font-size="${(size * 0.8).toFixed(1)}">${fmtLen(sh.part.w, s.units, false)} × ${fmtLen(sh.part.h, s.units, s.units === 'in')}</tspan></text>`);
   }
-  // X and Y from the sheet's lower-left corner, where X0 Y0 is, in the margin around it.
+  // The machine's X and Y from the sheet's lower-left corner: the sheet's X is the machine's X.
   out.push(axesSvg({ x: -pad * 0.5, y: H + pad * 0.5 }, [1, 0], [0, -1], pad));
   out.push('</svg>');
-  return out.join('');
+  if (!gordix) return out.join('');
+  return `<div class="sheetFig">${out.join('')}${gordixBadge()}</div>`;
 }
 
 function onSeg(a: Pt, b: Pt, p: Pt) {
@@ -1061,6 +1157,7 @@ const cam = new CamWorkspace({
   },
   showLayout: () => showTab('sheets'),
   download: (name, text) => download(name, text, 'text/plain'),
+  downloadMany: (files) => saveFiles(files.map((f) => ({ ...f, type: 'text/plain' }))),
 });
 
 // ---------------------------------------------------------------------------
@@ -1110,22 +1207,25 @@ function autoplay3d() {
 
 // ---------------------------------------------------------------------------
 
+/** Save one file: a "Save as" dialog where the browser has one, otherwise a download. */
 function download(name: string, text: string, type: string) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  void saveFiles([{ name, text, type }]);
 }
 
 const baseName = () => state.fileName.replace(/\.(step|stp|dxf)$/i, '') || 'layout';
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+// Read before anything saves settings: whether this browser has used the app before.
+const returning = (() => { try { return localStorage.getItem(STORE) !== null; } catch { return false; } })();
+$('appVersion').textContent = versionLabel();
+$('appVersion').addEventListener('click', showWhatsNew);
 $('cncMachine').innerHTML = Object.entries(MACHINE_LABELS).map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
 initTips();
 bindControls();
 syncControls();
 render();
 if (isCnc()) cncDisclaimer();
+restoreAutosave();
+whatsNewOnUpdate(returning);
 // Expose a loader for scripted testing (e.g. from the browser console).
 (window as unknown as { plywooderOpen: typeof openFile }).plywooderOpen = openFile;

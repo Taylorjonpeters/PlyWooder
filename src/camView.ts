@@ -2,12 +2,13 @@ import {
   planSheet, gordixFit, currentTable, stockKey, stockSupport, leavesSupport, DEFAULT_TOOLS, MACHINE_LABELS,
   type CamJob, type CamSettings, type CamSheet, type Move, type OpKind, type Tool,
 } from './cam';
-import { writeGcode, writeBoundsGcode, writePenBoundsGcode, estimateSeconds, cutLength, MACHINES } from './gcode';
+import { writeGcode, writeBoundsGcode, writePenBoundsGcode, stockEdgeReach, estimateSeconds, cutLength, MACHINES } from './gcode';
 import { tip } from './tip';
 import { BitLibraryModal } from './bitLibraryView';
 import { icon, setPlayState } from './icons';
 import { fmtLen, type Units } from './units';
 import { axesSvg } from './axesSvg';
+import { gordixBadge } from './gordixBadge';
 
 /** One sheet of the current layout, as the workspace sees it. */
 /**
@@ -28,6 +29,8 @@ export type CamHost = {
   /** Go back to step 2, where the machine, table and sheet are set. */
   showLayout: () => void;
   download: (name: string, text: string) => void;
+  /** Several files at once: into one folder the user picks, where the browser allows it. */
+  downloadMany: (files: { name: string; text: string }[]) => void;
 };
 
 const OP_NAME: Record<OpKind, string> = { label: 'Labels', pocket: 'Pockets', hole: 'Holes', outline: 'Outlines' };
@@ -247,6 +250,20 @@ export class CamWorkspace {
     if (pen) pen.disabled = this.boundsBlocked();
   }
 
+  /**
+   * A warning over the dry run buttons when the stock's edge is at or past what the GORDIX reaches,
+   * so the bounds and pen files can't drive to it. Empty when they can, or when it can't be told.
+   */
+  private edgeReachWarning(c: CamSettings) {
+    const sheets = this.host.sheets();
+    const sheet = (sheets[this.index] ?? sheets[0])?.sheet;
+    const r = sheet && stockEdgeReach(c, sheet.w, sheet.h);
+    if (!r) return '';
+    return `<div class="warn edgeReach" role="alert">Stock edge is outside the ${this.len(r.area.w, false)} × ${this.len(r.area.h)} `
+      + `the GORDIX reaches on table ${r.table.id}, so Bounds G-code can't get there. `
+      + (r.edges.length ? 'The pen draws only the edges in reach.' : "The pen can't reach any edge.") + '</div>';
+  }
+
   /** The bounds file needs a planned, up-to-date job with something to cut. */
   private boundsBlocked() {
     return !this.job?.files.length || this.host.stale();
@@ -260,7 +277,7 @@ export class CamWorkspace {
       stock: this.job.stock, cutDepth: this.job.cutDepth,
     });
     // It goes to the stock's corner, which is always past what the stock alone supports.
-    if (text) this.checkSupport(ref, 'edge', () => this.host.download(`${ref.fileBase}_bounds.gcode`, text));
+    if (text) this.checkSupport(ref, 'edge', () => this.host.download(`bounds_${ref.fileBase}.gcode`, text));
   }
 
   /** Pen plotter file that draws the rectangle the cuts reach on the material. */
@@ -271,7 +288,8 @@ export class CamWorkspace {
       cfg: { ...this.host.settings(), airCut: 0 }, sheetW: ref.sheet.w, sheetH: ref.sheet.h, title: ref.label,
       stock: this.job.stock, cutDepth: this.job.cutDepth,
     });
-    if (text) this.checkSupport(ref, 'edge', () => this.host.download(`${ref.fileBase}_pen_bounds.gcode`, text));
+    // No stock-support check: the pen marks where the stock goes, so the machine stands on the table.
+    if (text) this.host.download(`pen-bounds_${ref.fileBase}.gcode`, text);
   }
 
   /**
@@ -283,7 +301,7 @@ export class CamWorkspace {
     if (!ref || !this.job || this.boundsBlocked()) return;
     const router = this.job.files.map((f, i) => (f.kind === 'router' ? i : -1)).filter((i) => i >= 0);
     this.checkSupport(ref, router, () =>
-      router.forEach((i, k) => setTimeout(() => this.host.download(this.fileName(ref, i, true), this.text(ref, i, true)), k * 400)));
+      this.host.downloadMany(router.map((i) => ({ name: this.fileName(ref, i, true), text: this.text(ref, i, true) }))));
   }
 
   private downloadAll() {
@@ -291,7 +309,7 @@ export class CamWorkspace {
     if (!ref || !this.job) return;
     // Browsers drop rapid back-to-back downloads, so space them out.
     this.checkSupport(ref, this.job.files.map((_, i) => i), () =>
-      this.job!.files.forEach((_, i) => setTimeout(() => this.host.download(this.fileName(ref, i), this.text(ref, i)), i * 400)));
+      this.host.downloadMany(this.job!.files.map((_, i) => ({ name: this.fileName(ref, i), text: this.text(ref, i) }))));
   }
 
   /**
@@ -361,15 +379,15 @@ export class CamWorkspace {
     const { plan } = this.segments(this.timeline.length);
     parts.push(`<g class="plan">${plan}</g><g id="camDone"></g>`);
     parts.push(`<circle id="camTool" class="tool" r="3" cx="0" cy="0"/>`);
-    // Drawn as the sheet sits on the machine, so X always runs right and Y up. On a GORDIX table
-    // whose X side is short the G-code turns the sheet 90°, and the preview turns with it.
-    const turned = cfg.machine === 'gordix' && cfg.origin === 'center' && gordixFit(currentTable(cfg)).rotate;
-    const vw = turned ? h : w, vh = turned ? w : h;
+    // Drawn as the sheet sits on the machine: X runs right, Y up, and the GORDIX faces north (up).
     const o = pad * 0.5;
     const svg = this.$('camSvg');
-    svg.setAttribute('viewBox', `${-pad} ${-pad} ${vw + 2 * pad} ${vh + 2 * pad}`);
-    svg.innerHTML = `<g${turned ? ` transform="matrix(0 -1 1 0 0 ${w})"` : ''}>${parts.join('')}</g>`
-      + axesSvg({ x: -o, y: vh + o }, [1, 0], [0, -1], pad);
+    svg.setAttribute('viewBox', `${-pad} ${-pad} ${w + 2 * pad} ${h + 2 * pad}`);
+    svg.innerHTML = `<g>${parts.join('')}</g>` + axesSvg({ x: -o, y: h + o }, [1, 0], [0, -1], pad);
+    const badge = svg.parentElement!.querySelector('.gordixBadge');
+    if (cfg.machine === 'gordix') {
+      if (badge) badge.outerHTML = gordixBadge(); else svg.insertAdjacentHTML('afterend', gordixBadge());
+    } else badge?.remove();
   }
 
   /** SVG paths for moves [0, n): cutting moves by operation, tabs, and rapids. */
@@ -468,7 +486,6 @@ export class CamWorkspace {
     const gordix = c.machine === 'gordix';
     const sheet0 = sheets[0]?.sheet;
     const table = currentTable(c);
-    const fit = gordixFit(table);
     /** Label text with an optional ⓘ, kept in one span so the label's grid gives them one row. */
     const lt = (label: string, help?: string, art?: string) => `<span>${label}${help ? ` ${tip(help, art)}` : ''}</span>`;
     const numIn = (k: keyof CamSettings, label: string, min = 0, step = 'any', help?: string, art?: string) =>
@@ -485,7 +502,6 @@ export class CamWorkspace {
           <button class="ghost small" id="camToLayout" type="button">Change in Layout</button>
         </div>
         <p class="hint jobSummary"><b>${gordix ? `GORDIX · Table ${table.id}` : MACHINE_LABELS.grbl}</b>${sheet0 ? ` · ${this.len(sheet0.w, false)} × ${this.len(sheet0.h)} sheet` : ''}</p>
-        ${gordix && fit.rotate ? `<p class="hint">Sheet turned 90° ${tip("This table's X side (S) is its short one, so the G-code runs the sheet's long side along side W.")}</p>` : ''}
         <label>Origin (X0 Y0)<select data-k="origin">
           <option value="center" ${c.origin === 'center' ? 'selected' : ''}>Centre of the sheet</option>
           <option value="corner" ${c.origin === 'corner' ? 'selected' : ''}>Lower-left corner</option>
@@ -554,12 +570,15 @@ export class CamWorkspace {
 
       <section>
         <h2>Dry run</h2>
+        ${this.edgeReachWarning(c)}
         <div class="pair">
-          <button class="ghost" id="camAirDl" type="button" data-tip-art="air" data-tip="Downloads this sheet's cutting files raised ${num(Math.max(1, c.airLift))} mm, so the whole job runs in the air and nothing touches the material. Laser label files are left out." ${this.boundsBlocked() ? 'disabled' : ''}>Air cut G-code</button>
+          <button class="ghost" id="camAirDl" type="button" data-tip-art="air" data-tip="${gordix
+            ? `Downloads this sheet's cutting files with the bit kept at the ${num(Math.max(0.5, c.safeZ))} mm safe height, so the whole job runs in the air and nothing touches the material. Laser label files are left out.`
+            : `Downloads this sheet's cutting files raised ${num(Math.max(1, c.airLift))} mm, so the whole job runs in the air and nothing touches the material. Laser label files are left out.`}" ${this.boundsBlocked() ? 'disabled' : ''}>Air cut G-code</button>
           <button class="ghost" id="camBounds" type="button" data-tip-art="bounds" data-tip="Downloads one file that moves the bit to the stock sheet's lower-left corner at safe height and stops there, with nothing switched on, so you can line the stock's corner up under it." ${this.boundsBlocked() ? 'disabled' : ''}>Bounds G-code</button>
         </div>
-        <button class="ghost" id="camPenBounds" type="button" data-tip-art="penBounds" data-tip="Downloads a pen plotter file that draws the stock sheet's left edge, with 10 cm of its top and bottom edges, so you can place the stock against it. Put a pen in the machine and zero Z with its tip touching the surface; it draws ${num(c.penDepth)} mm below that. Nothing is cut." ${this.boundsBlocked() ? 'disabled' : ''}>Draw stock edge with pen</button>
-        ${numIn('airLift', 'Air cut height (mm)', 1)}
+        <button class="ghost" id="camPenBounds" type="button" data-tip-art="penBounds" data-tip="Downloads a pen plotter file that draws the stock sheet's left edge, with 10 cm of its top and bottom edges, so you can place the stock against it. Edges past the GORDIX's reach are left out. Put a pen in the machine and zero Z with its tip touching the surface; it draws ${num(c.penDepth)} mm below that. Nothing is cut." ${this.boundsBlocked() ? 'disabled' : ''}>Draw stock edge with pen</button>
+        ${gordix ? '' : numIn('airLift', 'Air cut height (mm)', 1)}
         ${numIn('penDepth', 'Pen depth below Z0 (mm)', 0, 'any', 'How far the pen file pushes the pen below Z0 so it presses on the material. Raise it if the line is faint or missing; a spring-loaded pen holder takes up the extra.')}
       </section>`;
   }

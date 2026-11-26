@@ -8,7 +8,7 @@ import { partsFromDxf } from '../src/dxfImport';
 import { nest, type NestSettings } from '../src/nest';
 import { placedShapes, type PlacedShape } from '../src/layout';
 import type { Poly, Pt } from '../src/geom';
-import { planSheet, gordixRange, gordixFit, parseTableCfg, CAM_DEFAULTS, DEFAULT_TOOLS, STUDIO_TABLES, stockKey, type CamSettings, type CamSheet, type Move } from '../src/cam';
+import { planSheet, tableReach, gordixFit, parseTableCfg, CAM_DEFAULTS, DEFAULT_TOOLS, STUDIO_TABLES, stockKey, type CamSettings, type CamSheet, type Move } from '../src/cam';
 import { writeGcode, estimateSeconds } from '../src/gcode';
 
 let failures = 0;
@@ -203,12 +203,21 @@ test('laser labels come first, in their own file, with M03 S255 / M05 and no Z',
   expect(!w.some((x) => x.some((y) => y[0] === 'Z')), 'laser file moves Z');
 });
 
+const zs = (t: string) => words(t).flatMap((w) => w.filter((x) => x[0] === 'Z').map((x) => Number(x.slice(1))));
+
 test('air cut raises every Z by the air-cut height', () => {
   const sheet = sheetOf([slotPanel]);
-  const [real] = gcodeOf(sheet, cfgWith());
-  const [air] = gcodeOf(sheet, cfgWith({ airCut: 25 }));
-  const minZ = (t: string) => Math.min(...words(t).flatMap((w) => w.filter((x) => x[0] === 'Z').map((x) => Number(x.slice(1)))));
+  const grbl = { machine: 'grbl' as const, origin: 'corner' as const };
+  const [real] = gcodeOf(sheet, cfgWith(grbl));
+  const [air] = gcodeOf(sheet, cfgWith({ ...grbl, airCut: 25 }));
+  const minZ = (t: string) => Math.min(...zs(t));
   expect(Math.abs(minZ(air) - (minZ(real) + 25)) < 1e-6, `air-cut min Z ${minZ(air)}, real ${minZ(real)}`);
+});
+
+test('a GORDIX air cut keeps the bit at the safe height, inside the firmware Z limit', () => {
+  const [air] = gcodeOf(sheetOf([slotPanel]), cfgWith({ airCut: 25, safeZ: 2 }));
+  expect(zs(air).every((z) => Math.abs(z - 2) < 1e-6), `Z values ${[...new Set(zs(air))].join(', ')}`);
+  expect(/AIR CUT/.test(air), 'header does not say it is an air cut');
 });
 
 test('GRBL files start the spindle, use a corner origin and end with M30', () => {
@@ -222,9 +231,19 @@ test('GRBL files start the spindle, use a corner origin and end with M30', () =>
 
 // --- checks ---------------------------------------------------------------------
 console.log('warnings');
-test("the GORDIX work area matches Studio's table formula (4 × 8 ft table: ±1080 × ±415)", () => {
-  const r = gordixRange(2440, 1220);
-  expect(r.x === 1080 && r.y === 415, `±${r.x} × ±${r.y}`);
+test("the GORDIX reach follows its firmware: (S+N)/4 - 140 by (E+W)/4 - 200, just inside", () => {
+  // Measured on a real machine: Y 534.9 accepted, Y 541 refused (firmware limits ±535, ±540.5).
+  const r = tableReach({ E: 1481, S: 1345, W: 1481, N: 1355 });
+  expect(r.x === 534 && r.y === 540, `±${r.x} × ±${r.y}`);
+  const d = tableReach(STUDIO_TABLES[1]);
+  expect(d.x === 529 && d.y === 529, `table 2 ±${d.x} × ±${d.y}`);
+});
+
+test('a safe height above Z+3 or a cut deeper than 30 mm is flagged on the GORDIX', () => {
+  const high = planSheet(sheetOf([slotPanel]), cfgWith({ safeZ: 5 }));
+  expect(high.warnings.some((w) => /Safe height/.test(w)), high.warnings.join(' | ') || 'no warnings');
+  const deep = planSheet(sheetOf([slotPanel], { thickness: 30 }), cfgWith());
+  expect(deep.warnings.some((w) => /Cut depth/.test(w)), deep.warnings.join(' | ') || 'no warnings');
 });
 
 test('cuts outside the GORDIX work area are flagged', () => {
@@ -274,28 +293,29 @@ test('table.cfg: a file with no tables is rejected', () => {
   expect(/table\.cfg/.test(msg), msg || 'no error');
 });
 
-test("Studio's default table 1 (2560 x 1460) reaches 2280 x 1038", () => {
+test("Studio's default table 1 (2560 x 1460) reaches 2278 x 1058", () => {
   const f = gordixFit(STUDIO_TABLES[0]);
-  expect(f.x * 2 === 2280 && f.y * 2 === 1038 && !f.rotate, JSON.stringify(f));
+  expect(f.x * 2 === 2278 && f.y * 2 === 1058 && !f.longY, JSON.stringify(f));
 });
 
-test('a 4 x 8 ft table (2438 x 1219) reaches 2158 x 830', () => {
+test('a 4 x 8 ft table (2438 x 1219) reaches 2156 x 818', () => {
   const f = gordixFit(parseTableCfg(TABLE_CFG)[0]);
-  expect(f.x * 2 === 2158 && f.y * 2 === 830, `${f.x * 2} x ${f.y * 2}`);
+  expect(f.x * 2 === 2156 && f.y * 2 === 818, `${f.x * 2} x ${f.y * 2}`);
 });
 
-test("on a table whose X side is the short one, the sheet's long side runs along machine Y", () => {
-  const tables = parseTableCfg(TABLE_CFG);
-  const f = gordixFit(tables[1]); // S 1340 (X), W 1460 (Y)
-  expect(f.rotate, 'table 2 should turn the sheet');
-  const sheet = sheetOf([{ ...slotPanel, pockets: [], regions: [{ outer: rect(20, 20, f.x * 2 - 40, 100), holes: [] }] }], { w: f.x * 2, h: f.y * 2 });
+test('an upright sheet on a table that reaches further along Y keeps the machine axes', () => {
+  // A near-square table as measured: S 1345, N 1355 (X ±534), E = W = 1481 (Y ±540).
+  const tables = parseTableCfg('TABLE2E 1481\nTABLE2S 1345\nTABLE2W 1481\nTABLE2N 1355');
+  const f = gordixFit(tables[1]);
+  expect(f.longY, 'table 2 should reach further along Y');
+  const sheet = sheetOf([{ ...slotPanel, pockets: [], regions: [{ outer: rect(20, 20, 100, f.y * 2 - 40), holes: [] }] }], { w: f.x * 2, h: f.y * 2 });
   const cfg = cfgWith({ tables, tableId: 2 });
   expect(!planSheet(sheet, cfg).warnings.length, planSheet(sheet, cfg).warnings.join(' | '));
   const [text] = gcodeOf(sheet, cfg);
   const vals = (axis: string) => words(text).flatMap((w) => w.filter((x) => x[0] === axis).map((x) => Number(x.slice(1))));
-  expect(Math.max(...vals('X').map(Math.abs)) <= f.machine.x + 0.01, `X reaches ${Math.max(...vals('X').map(Math.abs))}, machine X range ±${f.machine.x}`);
-  expect(Math.max(...vals('Y').map(Math.abs)) <= f.machine.y + 0.01, `Y reaches ${Math.max(...vals('Y').map(Math.abs))}, machine Y range ±${f.machine.y}`);
-  expect(/Sheet turned 90 degrees/.test(text), 'header does not say the sheet is turned');
+  expect(Math.max(...vals('X').map(Math.abs)) <= f.x + 0.01, `X reaches ${Math.max(...vals('X').map(Math.abs))}, machine X range ±${f.x}`);
+  expect(Math.max(...vals('Y').map(Math.abs)) > f.y - 30, `Y should run near ±${f.y}: the sheet's Y is the machine's Y`);
+  expect(!/turned/.test(text), 'header should not mention a turn');
 });
 
 // --- real sheets ---------------------------------------------------------------

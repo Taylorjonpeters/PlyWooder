@@ -229,37 +229,46 @@ export function parseTableCfg(text: string): GordixTable[] {
 }
 
 /**
- * Half-ranges of the GORDIX work area on a table, along the machine's X (side S) and Y (side W),
- * centred on the origin. Same formula as Studio's table setup page.
+ * The GORDIX firmware's own range check (docs/gordix-firmware-limits.md): a file is refused as
+ * "OUT OF RANGE" unless every X and Y it reaches, rounded to 0.1 mm, is strictly inside these
+ * half-ranges about X0 Y0. Only the four sides count, not D or the X/Y scale factors. This is not the
+ * formula on GORDIX Studio's table page, which allows about 60 mm more Y on a near-square table.
  */
-export const gordixRange = (S: number, W: number) => {
-  const tan15 = Math.tan((15 * Math.PI) / 180);
-  const x = Math.min(100 + S / 2 - ((W - 240) / 2) * tan15, S / 2 - 140);
-  const y = Math.min(100 + W / 2 - ((S - 240) / 2) * tan15, W / 2 - 140);
-  return { x: Math.round(x), y: Math.round(y) };
-};
+export const FIRMWARE_X_INSET = 140;
+export const FIRMWARE_Y_INSET = 200;
+/** Z the firmware accepts in a file, travel and retracts included, mm. */
+export const FIRMWARE_Z_MIN = -30;
+export const FIRMWARE_Z_MAX = 3;
+
+/**
+ * How far the GORDIX goes from X0 Y0 on a table, along machine X (sides S and N) and Y (sides E and
+ * W): the firmware's limit, rounded down to a whole millimetre so a point on it is still strictly
+ * inside, as the firmware requires.
+ */
+export const tableReach = (t: Pick<GordixTable, 'E' | 'S' | 'W' | 'N'>) => ({
+  x: Math.max(0, Math.ceil((t.S + t.N) / 4 - FIRMWARE_X_INSET) - 1),
+  y: Math.max(0, Math.ceil((t.E + t.W) / 4 - FIRMWARE_Y_INSET) - 1),
+});
 
 /** The selected table, or Studio's first default. */
 export const currentTable = (cfg: CamSettings): GordixTable =>
   (cfg.tables.length ? cfg.tables : STUDIO_TABLES).find((t) => t.id === cfg.tableId) ?? (cfg.tables[0] ?? STUDIO_TABLES[0]);
 
 /**
- * How a sheet sits in the work area of a table. PlyWooder lays sheets out with the long side on
- * X, so when the machine's X range is the shorter one the sheet is turned 90° (`rotate`) and its
- * long side runs along the machine's Y axis. `x`/`y` are half-ranges along the sheet's own axes.
+ * How far a table reaches from the sheet's centre, as half-ranges. The sheet always sits with its
+ * X along the machine's X (GORDIX north up), so these are the machine's own X and Y reach.
+ * `longY` is true when the table reaches further along Y, where a long sheet fits only upright.
  */
 export function gordixFit(t: GordixTable) {
-  const r = gordixRange(t.S, t.W);
-  const rotate = r.x < r.y;
-  return { rotate, x: rotate ? r.y : r.x, y: rotate ? r.x : r.y, machine: r };
+  const r = tableReach(t);
+  return { x: r.x, y: r.y, longY: r.y > r.x };
 }
 
-export const GORDIX_Z_TRAVEL = 30;
 
 /**
  * The GORDIX drives on the surface under it. When the stock is smaller than the table's work area,
- * the stock alone is that surface, and Studio's work-area formula applied to the stock gives how
- * far from its centre the machine can go before it runs off an edge: `x`/`y` are half-ranges along
+ * the stock alone is that surface, and the firmware's insets (140 mm along machine X, 200 mm along
+ * Y) applied to the stock give how far from its centre the machine can go before it runs off an edge: `x`/`y` are half-ranges along
  * the sheet's own axes, `edge` the distance in from the stock's edges that has to stay clear of
  * toolpaths (the larger of the two sides). Null when this doesn't apply: another machine, or a
  * sheet as big as the table's work area, which means the table is covered.
@@ -268,9 +277,8 @@ export function stockSupport(sheet: { w: number; h: number }, cfg: CamSettings) 
   if (cfg.machine !== 'gordix') return null;
   const f = gordixFit(currentTable(cfg));
   if (sheet.w >= f.x * 2 - 1 && sheet.h >= f.y * 2 - 1) return null;
-  const r = gordixRange(sheet.w, sheet.h);
-  const edge = Math.max(sheet.w / 2 - r.x, sheet.h / 2 - r.y);
-  return { x: r.x, y: r.y, edge: Math.ceil(edge) };
+  const inW = FIRMWARE_X_INSET, inH = FIRMWARE_Y_INSET;
+  return { x: Math.max(0, sheet.w / 2 - inW), y: Math.max(0, sheet.h / 2 - inH), edge: Math.max(inW, inH) };
 }
 
 /** True when any move (travel included: the machine drives there too) leaves the stock's support. */
@@ -516,7 +524,8 @@ export function planSheet(sheet: CamSheet, cfg: CamSettings): CamJob {
   if (tOut.diameter > sheet.kerf + 0.01) {
     warnings.push(`Outline bit (${tOut.diameter} mm) is wider than the layout's gap (${sheet.kerf} mm) and would cut into parts. Re-pack.`);
   }
-  if (cfg.machine === 'gordix' && cutDepth > GORDIX_Z_TRAVEL) warnings.push(`Cut depth ${cutDepth.toFixed(1)} mm exceeds the GORDIX's ${GORDIX_Z_TRAVEL} mm Z travel.`);
+  if (cfg.machine === 'gordix' && cutDepth > -FIRMWARE_Z_MIN) warnings.push(`Cut depth ${cutDepth.toFixed(1)} mm is past the ${-FIRMWARE_Z_MIN} mm the GORDIX accepts.`);
+  if (cfg.machine === 'gordix' && Math.max(0.5, cfg.safeZ) > FIRMWARE_Z_MAX) warnings.push(`Safe height is above the ${FIRMWARE_Z_MAX} mm the GORDIX accepts.`);
 
   const parts = sheet.shapes.map((s) => shapePart(s.regions, cfg, tOut.diameter / 2, tHole.diameter / 2));
 
@@ -618,7 +627,8 @@ export function planSheet(sheet: CamSheet, cfg: CamSettings): CamJob {
     const table = currentTable(cfg);
     const r = gordixFit(table);
     const cx = sheet.w / 2, cy = sheet.h / 2;
-    const out = files.some((f) => f.moves.some((m) => !m.rapid && (Math.abs(m.x - cx) > r.x + 0.5 || Math.abs(m.y - cy) > r.y + 0.5)));
+    // The firmware checks every point the file reaches, travel included.
+    const out = files.some((f) => f.moves.some((m) => Math.abs(m.x - cx) > r.x + 1e-6 || Math.abs(m.y - cy) > r.y + 1e-6));
     if (out) warnings.push(`Cuts run outside the ${r.x * 2} × ${r.y * 2} mm the GORDIX reaches on table ${table.id}. Use the work area as the sheet and re-pack.`);
   }
 
