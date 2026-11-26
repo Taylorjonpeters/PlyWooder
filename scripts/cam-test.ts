@@ -295,7 +295,7 @@ test('table.cfg: a file with no tables is rejected', () => {
 
 test("Studio's default table 1 (2560 x 1460) reaches 2278 x 1058", () => {
   const f = gordixFit(STUDIO_TABLES[0]);
-  expect(f.x * 2 === 2278 && f.y * 2 === 1058 && !f.rotate, JSON.stringify(f));
+  expect(f.x * 2 === 2278 && f.y * 2 === 1058 && !f.longY, JSON.stringify(f));
 });
 
 test('a 4 x 8 ft table (2438 x 1219) reaches 2156 x 818', () => {
@@ -303,19 +303,19 @@ test('a 4 x 8 ft table (2438 x 1219) reaches 2156 x 818', () => {
   expect(f.x * 2 === 2156 && f.y * 2 === 818, `${f.x * 2} x ${f.y * 2}`);
 });
 
-test("on a table that reaches further along Y, the sheet's long side runs along machine Y", () => {
+test('an upright sheet on a table that reaches further along Y keeps the machine axes', () => {
   // A near-square table as measured: S 1345, N 1355 (X ±534), E = W = 1481 (Y ±540).
   const tables = parseTableCfg('TABLE2E 1481\nTABLE2S 1345\nTABLE2W 1481\nTABLE2N 1355');
   const f = gordixFit(tables[1]);
-  expect(f.rotate, 'table 2 should turn the sheet');
-  const sheet = sheetOf([{ ...slotPanel, pockets: [], regions: [{ outer: rect(20, 20, f.x * 2 - 40, 100), holes: [] }] }], { w: f.x * 2, h: f.y * 2 });
+  expect(f.longY, 'table 2 should reach further along Y');
+  const sheet = sheetOf([{ ...slotPanel, pockets: [], regions: [{ outer: rect(20, 20, 100, f.y * 2 - 40), holes: [] }] }], { w: f.x * 2, h: f.y * 2 });
   const cfg = cfgWith({ tables, tableId: 2 });
   expect(!planSheet(sheet, cfg).warnings.length, planSheet(sheet, cfg).warnings.join(' | '));
   const [text] = gcodeOf(sheet, cfg);
   const vals = (axis: string) => words(text).flatMap((w) => w.filter((x) => x[0] === axis).map((x) => Number(x.slice(1))));
-  expect(Math.max(...vals('X').map(Math.abs)) <= f.machine.x + 0.01, `X reaches ${Math.max(...vals('X').map(Math.abs))}, machine X range ±${f.machine.x}`);
-  expect(Math.max(...vals('Y').map(Math.abs)) <= f.machine.y + 0.01, `Y reaches ${Math.max(...vals('Y').map(Math.abs))}, machine Y range ±${f.machine.y}`);
-  expect(/Sheet turned 90 degrees/.test(text), 'header does not say the sheet is turned');
+  expect(Math.max(...vals('X').map(Math.abs)) <= f.x + 0.01, `X reaches ${Math.max(...vals('X').map(Math.abs))}, machine X range ±${f.x}`);
+  expect(Math.max(...vals('Y').map(Math.abs)) > f.y - 30, `Y should run near ±${f.y}: the sheet's Y is the machine's Y`);
+  expect(!/turned/.test(text), 'header should not mention a turn');
 });
 
 // --- real sheets ---------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { currentTable, gordixFit, tableReach, type CamFile, type CamSettings, type MachineId, type Move } from './cam';
+import { currentTable, tableReach, type CamFile, type CamSettings, type MachineId, type Move } from './cam';
 
 /**
  * Writes a planned file (src/cam.ts) as G-code for one machine.
@@ -67,18 +67,16 @@ export type WriteContext = {
 function machineFrame(cfg: CamSettings, sheetW: number, sheetH: number) {
   const ox = cfg.origin === 'center' ? sheetW / 2 : 0;
   const oy = cfg.origin === 'center' ? sheetH / 2 : 0;
-  // When the table's X side (S) is its short one, the sheet's long side runs along the machine's Y.
   const table = currentTable(cfg);
-  const turn = cfg.machine === 'gordix' && cfg.origin === 'center' && gordixFit(table).rotate;
-  const at = (mv: { x: number; y: number }) => (turn ? { x: -(mv.y - oy), y: mv.x - ox } : { x: mv.x - ox, y: mv.y - oy });
-  return { at, turn, table };
+  const at = (mv: { x: number; y: number }) => ({ x: mv.x - ox, y: mv.y - oy });
+  return { at, table };
 }
 
 export function writeGcode(file: CamFile, ctx: WriteContext): string {
   const { cfg } = ctx;
   const m = MACHINES[cfg.machine];
   const c = coord(m);
-  const { at, turn, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
+  const { at, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
   // An air cut raises the whole job. The GORDIX refuses any Z above +3, so there it stays at the
   // safe height instead: the bit traces every path in the air and never goes down.
   const air = file.kind === 'router' && cfg.airCut > 0;
@@ -104,7 +102,6 @@ export function writeGcode(file: CamFile, ctx: WriteContext): string {
   line(cfg.origin === 'center'
     ? `; Origin: X0 Y0 = centre of the ${n(ctx.sheetW)} x ${n(ctx.sheetH)} mm sheet${file.kind === 'router' ? ', Z0 = top of material' : ''}${cfg.machine === 'gordix' ? `. GORDIX table ${table.id} (S ${n(table.S)} x W ${n(table.W)} mm)` : ''}`
     : `; Origin: X0 Y0 = lower-left corner of the sheet${file.kind === 'router' ? ', Z0 = top of material' : ''}`);
-  if (turn) line(`; Sheet turned 90 degrees: its long side runs along table side W (machine Y).`);
   line('G21');
   line('G90');
 
@@ -160,8 +157,7 @@ const hasCuts = (files: CamFile[]) => files.some((f) => f.moves.some((mv) => !mv
 
 /**
  * The stock sheet's four corners in machine coordinates, counter-clockwise from the corner with the
- * lowest X and Y as seen on the machine (which, when the sheet is turned 90 degrees, is not the
- * sheet's own lower-left).
+ * lowest X and Y.
  */
 function stockCorners(at: (p: { x: number; y: number }) => { x: number; y: number }, w: number, h: number) {
   const pts = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }].map(at);
@@ -180,7 +176,7 @@ export function writeBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'inde
   const m = MACHINES[cfg.machine];
   const c = coord(m);
   if (!hasCuts(files)) return null;
-  const { at, turn, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
+  const { at, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
   const corner = stockCorners(at, ctx.sheetW, ctx.sheetH)[0];
   const z = Math.max(0.5, cfg.safeZ);
   const rapidF = m.rapidF === null ? '' : ` F${n(m.rapidF)}`;
@@ -192,7 +188,6 @@ export function writeBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'inde
     cfg.origin === 'center'
       ? `; Origin: X0 Y0 = centre of the ${n(ctx.sheetW)} x ${n(ctx.sheetH)} mm sheet, Z0 = top of material${cfg.machine === 'gordix' ? `. GORDIX table ${table.id} (S ${n(table.S)} x W ${n(table.W)} mm)` : ''}`
       : '; Origin: X0 Y0 = lower-left corner of the sheet, Z0 = top of material',
-    ...(turn ? ['; Sheet turned 90 degrees: its long side runs along table side W (machine Y).'] : []),
     'G21',
     'G90',
     `G0 X0 Y0${rapidF}`,
@@ -212,7 +207,7 @@ type Seg = [{ x: number; y: number }, { x: number; y: number }];
  * Whether the dry run files that go to the stock's edge (Bounds G-code, Draw stock edge with pen)
  * can get there on the GORDIX. Both drive the bit centre onto the stock's edge, so the stock's
  * half-size along each machine axis has to stay inside the table's half-range (tableReach, along
- * machine X and Y; the sheet may be turned 90°). A sheet sized with "Use table max" sits on that
+ * machine X and Y). A sheet sized with "Use table max" sits on that
  * half-range, which is inside the firmware's limit, so it fits. Null when it fits, or when this can't be told: another
  * machine, or a corner origin, which says nothing about where the machine stands.
  *
@@ -221,12 +216,12 @@ type Seg = [{ x: number; y: number }, { x: number; y: number }];
  */
 export function stockEdgeReach(cfg: CamSettings, sheetW: number, sheetH: number) {
   if (cfg.machine !== 'gordix' || cfg.origin !== 'center') return null;
-  const { at, turn, table } = machineFrame(cfg, sheetW, sheetH);
+  const { at, table } = machineFrame(cfg, sheetW, sheetH);
   const reach = tableReach(table);
-  const halfX = (turn ? sheetH : sheetW) / 2, halfY = (turn ? sheetW : sheetH) / 2;
+  const halfX = sheetW / 2, halfY = sheetH / 2;
   const over = Math.max(halfX - reach.x, halfY - reach.y);
   if (over <= 1e-6) return null;
-  const area = turn ? { w: reach.y * 2, h: reach.x * 2 } : { w: reach.x * 2, h: reach.y * 2 };
+  const area = { w: reach.x * 2, h: reach.y * 2 };
   const lx = reach.x - PEN_REACH_MARGIN, ly = reach.y - PEN_REACH_MARGIN;
   const [ll, lr, ur, ul] = stockCorners(at, sheetW, sheetH);
   const edges: Seg[] = [];
@@ -267,7 +262,7 @@ export function writePenBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'i
   const m = MACHINES[cfg.machine];
   const c = coord(m);
   if (!hasCuts(files)) return null;
-  const { at, turn, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
+  const { at, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
   const [ll, lr, , ul] = stockCorners(at, ctx.sheetW, ctx.sheetH);
   const tick = Math.min(PEN_TICK, lr.x - ll.x);
   const reach = stockEdgeReach(cfg, ctx.sheetW, ctx.sheetH);
@@ -289,7 +284,6 @@ export function writePenBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'i
     cfg.origin === 'center'
       ? `; Origin: X0 Y0 = centre of the ${n(ctx.sheetW)} x ${n(ctx.sheetH)} mm sheet, Z0 = pen tip on the material${cfg.machine === 'gordix' ? `. GORDIX table ${table.id} (S ${n(table.S)} x W ${n(table.W)} mm)` : ''}`
       : '; Origin: X0 Y0 = lower-left corner of the sheet, Z0 = pen tip on the material',
-    ...(turn ? ['; Sheet turned 90 degrees: its long side runs along table side W (machine Y).'] : []),
     'G21',
     'G90',
     `G0 X0 Y0${rapidF}`,

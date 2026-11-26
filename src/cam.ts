@@ -255,14 +255,13 @@ export const currentTable = (cfg: CamSettings): GordixTable =>
   (cfg.tables.length ? cfg.tables : STUDIO_TABLES).find((t) => t.id === cfg.tableId) ?? (cfg.tables[0] ?? STUDIO_TABLES[0]);
 
 /**
- * How a sheet sits in the work area of a table. PlyWooder lays sheets out with the long side on
- * X, so when the machine's X range is the shorter one the sheet is turned 90° (`rotate`) and its
- * long side runs along the machine's Y axis. `x`/`y` are half-ranges along the sheet's own axes.
+ * How far a table reaches from the sheet's centre, as half-ranges. The sheet always sits with its
+ * X along the machine's X (GORDIX north up), so these are the machine's own X and Y reach.
+ * `longY` is true when the table reaches further along Y, where a long sheet fits only upright.
  */
 export function gordixFit(t: GordixTable) {
   const r = tableReach(t);
-  const rotate = r.x < r.y;
-  return { rotate, x: rotate ? r.y : r.x, y: rotate ? r.x : r.y, machine: r };
+  return { x: r.x, y: r.y, longY: r.y > r.x };
 }
 
 
@@ -278,9 +277,7 @@ export function stockSupport(sheet: { w: number; h: number }, cfg: CamSettings) 
   if (cfg.machine !== 'gordix') return null;
   const f = gordixFit(currentTable(cfg));
   if (sheet.w >= f.x * 2 - 1 && sheet.h >= f.y * 2 - 1) return null;
-  // The sheet's own X runs along machine Y when the G-code turns it.
-  const turn = cfg.origin === 'center' && f.rotate;
-  const inW = turn ? FIRMWARE_Y_INSET : FIRMWARE_X_INSET, inH = turn ? FIRMWARE_X_INSET : FIRMWARE_Y_INSET;
+  const inW = FIRMWARE_X_INSET, inH = FIRMWARE_Y_INSET;
   return { x: Math.max(0, sheet.w / 2 - inW), y: Math.max(0, sheet.h / 2 - inH), edge: Math.max(inW, inH) };
 }
 

@@ -379,19 +379,14 @@ export class CamWorkspace {
     const { plan } = this.segments(this.timeline.length);
     parts.push(`<g class="plan">${plan}</g><g id="camDone"></g>`);
     parts.push(`<circle id="camTool" class="tool" r="3" cx="0" cy="0"/>`);
-    // Drawn as the sheet sits on the machine, so X always runs right and Y up. On a GORDIX table
-    // whose X side is short the G-code turns the sheet 90°, and the preview turns with it.
-    const turned = cfg.machine === 'gordix' && cfg.origin === 'center' && gordixFit(currentTable(cfg)).rotate;
-    const vw = turned ? h : w, vh = turned ? w : h;
+    // Drawn as the sheet sits on the machine: X runs right, Y up, and the GORDIX faces north (up).
     const o = pad * 0.5;
     const svg = this.$('camSvg');
-    svg.setAttribute('viewBox', `${-pad} ${-pad} ${vw + 2 * pad} ${vh + 2 * pad}`);
-    svg.innerHTML = `<g${turned ? ` transform="matrix(0 -1 1 0 0 ${w})"` : ''}>${parts.join('')}</g>`
-      + axesSvg({ x: -o, y: vh + o }, [1, 0], [0, -1], pad);
-    // The preview is in machine coordinates, so the GORDIX always faces north (up) here.
+    svg.setAttribute('viewBox', `${-pad} ${-pad} ${w + 2 * pad} ${h + 2 * pad}`);
+    svg.innerHTML = `<g>${parts.join('')}</g>` + axesSvg({ x: -o, y: h + o }, [1, 0], [0, -1], pad);
     const badge = svg.parentElement!.querySelector('.gordixBadge');
     if (cfg.machine === 'gordix') {
-      if (badge) badge.outerHTML = gordixBadge(0); else svg.insertAdjacentHTML('afterend', gordixBadge(0));
+      if (badge) badge.outerHTML = gordixBadge(); else svg.insertAdjacentHTML('afterend', gordixBadge());
     } else badge?.remove();
   }
 
@@ -491,7 +486,6 @@ export class CamWorkspace {
     const gordix = c.machine === 'gordix';
     const sheet0 = sheets[0]?.sheet;
     const table = currentTable(c);
-    const fit = gordixFit(table);
     /** Label text with an optional ⓘ, kept in one span so the label's grid gives them one row. */
     const lt = (label: string, help?: string, art?: string) => `<span>${label}${help ? ` ${tip(help, art)}` : ''}</span>`;
     const numIn = (k: keyof CamSettings, label: string, min = 0, step = 'any', help?: string, art?: string) =>
@@ -508,7 +502,6 @@ export class CamWorkspace {
           <button class="ghost small" id="camToLayout" type="button">Change in Layout</button>
         </div>
         <p class="hint jobSummary"><b>${gordix ? `GORDIX · Table ${table.id}` : MACHINE_LABELS.grbl}</b>${sheet0 ? ` · ${this.len(sheet0.w, false)} × ${this.len(sheet0.h)} sheet` : ''}</p>
-        ${gordix && fit.rotate ? `<p class="hint">Sheet turned 90° ${tip("The GORDIX reaches further along Y than X on this table, so the G-code runs the sheet's long side along Y (sides E and W).")}</p>` : ''}
         <label>Origin (X0 Y0)<select data-k="origin">
           <option value="center" ${c.origin === 'center' ? 'selected' : ''}>Centre of the sheet</option>
           <option value="corner" ${c.origin === 'corner' ? 'selected' : ''}>Lower-left corner</option>

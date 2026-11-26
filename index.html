@@ -25,7 +25,7 @@
           <div>
             <h1>PlyWooder</h1>
             <p>STEP in, cut sheets out.</p>
-            <p class="credit">by <a href="https://www.instagram.com/knurl.ing/" target="_blank" rel="noopener">@knurl.ing</a> · <a href="https://knurling.studio" target="_blank" rel="noopener">knurling.studio</a> · <a href="https://github.com/Taylorjonpeters/PlyWooder" target="_blank" rel="noopener">GitHub</a></p>
+            <p class="credit">by <a href="https://www.instagram.com/knurl.ing/" target="_blank" rel="noopener">@knurl.ing</a> · <a href="https://knurling.studio" target="_blank" rel="noopener">knurling.studio</a> · <a href="https://github.com/Taylorjonpeters/PlyWooder" target="_blank" rel="noopener">GitHub</a> · <button class="linkBtn" id="appVersion" type="button" data-tip="What's new"></button></p>
           </div>
         </header>
 
@@ -88,6 +88,9 @@
           <div class="row2" id="cncCustom">
             <label>X length <input type="number" id="cncW" step="any" min="1" /></label>
             <label>Y width <input type="number" id="cncH" step="any" min="1" /></label>
+            <button class="ghost iconBtn swapBtn" id="cncSwap" type="button" data-tip="Swap X and Y" aria-label="Swap X and Y">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13" /></svg>
+            </button>
           </div>
           <!-- Three ways to size the sheet: type it, take the most the table reaches, or let Suggest size find it. -->
           <div class="sheetChips">
