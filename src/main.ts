@@ -660,8 +660,7 @@ function syncWorkflow() {
   $('cncTableBtns').hidden = !gordix;
   $<HTMLButtonElement>('cncResetTables').disabled = !c.tablesFile;
   $('cncLoadTables').dataset.tip = c.tablesFile ? `Tables from ${c.tablesFile}` : "Exported from GORDIX Studio's table setup page";
-  const tables = c.tables.length ? c.tables : STUDIO_TABLES;
-  $('cncTable').innerHTML = tables.map((t) => {
+  $('cncTable').innerHTML = (c.tables.length ? c.tables : STUDIO_TABLES).map((t) => {
     const f = gordixFit(t);
     return `<option value="${t.id}">${t.id}: ${Math.round(t.S)} × ${Math.round(t.W)} mm · cuts ${f.x * 2} × ${f.y * 2} mm</option>`;
   }).join('');

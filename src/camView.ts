@@ -1,8 +1,8 @@
 import {
-  planSheet, gordixFit, currentTable, stockKey, stockSupport, leavesSupport, DEFAULT_TOOLS, MACHINE_LABELS,
+  planSheet, gordixFit, currentTable, stockKey, FIRMWARE_Z_MAX, stockSupport, leavesSupport, DEFAULT_TOOLS, MACHINE_LABELS,
   type CamJob, type CamSettings, type CamSheet, type Move, type OpKind, type Tool,
 } from './cam';
-import { writeGcode, writeBoundsGcode, writePenBoundsGcode, estimateSeconds, cutLength, MACHINES } from './gcode';
+import { writeGcode, writeBoundsGcode, writePenBoundsGcode, stockEdgeReach, estimateSeconds, cutLength, MACHINES } from './gcode';
 import { tip } from './tip';
 import { BitLibraryModal } from './bitLibraryView';
 import { icon, setPlayState } from './icons';
@@ -248,6 +248,20 @@ export class CamWorkspace {
     if (pen) pen.disabled = this.boundsBlocked();
   }
 
+  /**
+   * A warning over the dry run buttons when the stock's edge is at or past what the GORDIX reaches,
+   * so the bounds and pen files can't drive to it. Empty when they can, or when it can't be told.
+   */
+  private edgeReachWarning(c: CamSettings) {
+    const sheets = this.host.sheets();
+    const sheet = (sheets[this.index] ?? sheets[0])?.sheet;
+    const r = sheet && stockEdgeReach(c, sheet.w, sheet.h);
+    if (!r) return '';
+    return `<div class="warn edgeReach" role="alert">Stock edge is outside the ${this.len(r.area.w, false)} × ${this.len(r.area.h)} `
+      + `the GORDIX reaches on table ${r.table.id}, so Bounds G-code can't get there. `
+      + (r.edges.length ? 'The pen draws only the edges in reach.' : "The pen can't reach any edge.") + '</div>';
+  }
+
   /** The bounds file needs a planned, up-to-date job with something to cut. */
   private boundsBlocked() {
     return !this.job?.files.length || this.host.stale();
@@ -272,7 +286,8 @@ export class CamWorkspace {
       cfg: { ...this.host.settings(), airCut: 0 }, sheetW: ref.sheet.w, sheetH: ref.sheet.h, title: ref.label,
       stock: this.job.stock, cutDepth: this.job.cutDepth,
     });
-    if (text) this.checkSupport(ref, 'edge', () => this.host.download(`${ref.fileBase}_pen_bounds.gcode`, text));
+    // No stock-support check: the pen marks where the stock goes, so the machine stands on the table.
+    if (text) this.host.download(`${ref.fileBase}_pen_bounds.gcode`, text);
   }
 
   /**
@@ -491,7 +506,7 @@ export class CamWorkspace {
           <button class="ghost small" id="camToLayout" type="button">Change in Layout</button>
         </div>
         <p class="hint jobSummary"><b>${gordix ? `GORDIX · Table ${table.id}` : MACHINE_LABELS.grbl}</b>${sheet0 ? ` · ${this.len(sheet0.w, false)} × ${this.len(sheet0.h)} sheet` : ''}</p>
-        ${gordix && fit.rotate ? `<p class="hint">Sheet turned 90° ${tip("This table's X side (S) is its short one, so the G-code runs the sheet's long side along side W.")}</p>` : ''}
+        ${gordix && fit.rotate ? `<p class="hint">Sheet turned 90° ${tip("The GORDIX reaches further along Y than X on this table, so the G-code runs the sheet's long side along Y (sides E and W).")}</p>` : ''}
         <label>Origin (X0 Y0)<select data-k="origin">
           <option value="center" ${c.origin === 'center' ? 'selected' : ''}>Centre of the sheet</option>
           <option value="corner" ${c.origin === 'corner' ? 'selected' : ''}>Lower-left corner</option>
@@ -560,12 +575,15 @@ export class CamWorkspace {
 
       <section>
         <h2>Dry run</h2>
-        <div class="pair">
-          <button class="ghost" id="camAirDl" type="button" data-tip-art="air" data-tip="Downloads this sheet's cutting files raised ${num(Math.max(1, c.airLift))} mm, so the whole job runs in the air and nothing touches the material. Laser label files are left out." ${this.boundsBlocked() ? 'disabled' : ''}>Air cut G-code</button>
+        ${this.edgeReachWarning(c)}
+        <div class="${gordix ? '' : 'pair'}">
+          ${gordix ? '' : `<button class="ghost" id="camAirDl" type="button" data-tip-art="air" data-tip="Downloads this sheet's cutting files raised ${num(Math.max(1, c.airLift))} mm, so the whole job runs in the air and nothing touches the material. Laser label files are left out." ${this.boundsBlocked() ? 'disabled' : ''}>Air cut G-code</button>`}
           <button class="ghost" id="camBounds" type="button" data-tip-art="bounds" data-tip="Downloads one file that moves the bit to the stock sheet's lower-left corner at safe height and stops there, with nothing switched on, so you can line the stock's corner up under it." ${this.boundsBlocked() ? 'disabled' : ''}>Bounds G-code</button>
         </div>
-        <button class="ghost" id="camPenBounds" type="button" data-tip-art="penBounds" data-tip="Downloads a pen plotter file that draws the stock sheet's left edge, with 10 cm of its top and bottom edges, so you can place the stock against it. Put a pen in the machine and zero Z with its tip touching the surface; it draws ${num(c.penDepth)} mm below that. Nothing is cut." ${this.boundsBlocked() ? 'disabled' : ''}>Draw stock edge with pen</button>
-        ${numIn('airLift', 'Air cut height (mm)', 1)}
+        <button class="ghost" id="camPenBounds" type="button" data-tip-art="penBounds" data-tip="Downloads a pen plotter file that draws the stock sheet's left edge, with 10 cm of its top and bottom edges, so you can place the stock against it. Edges past the GORDIX's reach are left out. Put a pen in the machine and zero Z with its tip touching the surface; it draws ${num(c.penDepth)} mm below that. Nothing is cut." ${this.boundsBlocked() ? 'disabled' : ''}>Draw stock edge with pen</button>
+        ${gordix
+          ? `<p class="hint">For an air cut, zero Z ${num(Math.max(1, c.airLift))} mm above the material and run the normal files: the GORDIX refuses files that go above Z+${FIRMWARE_Z_MAX}.</p>`
+          : numIn('airLift', 'Air cut height (mm)', 1)}
         ${numIn('penDepth', 'Pen depth below Z0 (mm)', 0, 'any', 'How far the pen file pushes the pen below Z0 so it presses on the material. Raise it if the line is faint or missing; a spring-loaded pen holder takes up the extra.')}
       </section>`;
   }

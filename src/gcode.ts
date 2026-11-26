@@ -1,4 +1,4 @@
-import { currentTable, gordixFit, type CamFile, type CamSettings, type MachineId, type Move } from './cam';
+import { currentTable, gordixFit, tableReach, type CamFile, type CamSettings, type MachineId, type Move } from './cam';
 
 /**
  * Writes a planned file (src/cam.ts) as G-code for one machine.
@@ -198,6 +198,50 @@ export function writeBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'inde
   return out.join('\n') + '\n';
 }
 
+/** How far inside the GORDIX's reach the pen stops when an edge runs past it, mm. */
+const PEN_REACH_MARGIN = 10;
+
+type Seg = [{ x: number; y: number }, { x: number; y: number }];
+
+/**
+ * Whether the dry run files that go to the stock's edge (Bounds G-code, Draw stock edge with pen)
+ * can get there on the GORDIX. Both drive the bit centre onto the stock's edge, so the stock's
+ * half-size along each machine axis has to stay inside the table's half-range (tableReach, along
+ * machine X and Y; the sheet may be turned 90°). A sheet sized with "Use table max" sits on that
+ * half-range, which is inside the firmware's limit, so it fits. Null when it fits, or when this can't be told: another
+ * machine, or a corner origin, which says nothing about where the machine stands.
+ *
+ * `area` is the work area along the sheet's own axes. `edges` are the parts of the stock's four
+ * edges the pen can still draw, in machine coordinates, kept PEN_REACH_MARGIN inside the reach.
+ */
+export function stockEdgeReach(cfg: CamSettings, sheetW: number, sheetH: number) {
+  if (cfg.machine !== 'gordix' || cfg.origin !== 'center') return null;
+  const { at, turn, table } = machineFrame(cfg, sheetW, sheetH);
+  const reach = tableReach(table);
+  const halfX = (turn ? sheetH : sheetW) / 2, halfY = (turn ? sheetW : sheetH) / 2;
+  const over = Math.max(halfX - reach.x, halfY - reach.y);
+  if (over <= 1e-6) return null;
+  const area = turn ? { w: reach.y * 2, h: reach.x * 2 } : { w: reach.x * 2, h: reach.y * 2 };
+  const lx = reach.x - PEN_REACH_MARGIN, ly = reach.y - PEN_REACH_MARGIN;
+  const [ll, lr, ur, ul] = stockCorners(at, sheetW, sheetH);
+  const edges: Seg[] = [];
+  // Around the stock: bottom, right, top, left. An edge past the reach is left out; one that runs
+  // past it at its ends is cut short.
+  const along = (y: number, xa: number, xb: number) => {
+    const a = Math.max(Math.min(xa, xb), -lx), b = Math.min(Math.max(xa, xb), lx);
+    if (Math.abs(y) <= ly && b - a > 1) edges.push(xa < xb ? [{ x: a, y }, { x: b, y }] : [{ x: b, y }, { x: a, y }]);
+  };
+  const across = (x: number, ya: number, yb: number) => {
+    const a = Math.max(Math.min(ya, yb), -ly), b = Math.min(Math.max(ya, yb), ly);
+    if (Math.abs(x) <= lx && b - a > 1) edges.push(ya < yb ? [{ x, y: a }, { x, y: b }] : [{ x, y: b }, { x, y: a }]);
+  };
+  along(ll.y, ll.x, lr.x);
+  across(lr.x, lr.y, ur.y);
+  along(ur.y, ur.x, ul.x);
+  across(ul.x, ul.y, ll.y);
+  return { area, table, edges };
+}
+
 /** Pen plotting: the pen comes down at the first feed and draws at the second. */
 const PEN_DOWN_FEED = 300;
 const PEN_FEED = 1000;
@@ -207,9 +251,11 @@ const PEN_TICK = 100;
 /**
  * Pen plotter G-code that marks where the stock sheet goes: its whole left edge on the machine
  * (lowest X), with a short stretch of the top and bottom edges, like a [ bracket, drawn with the
- * spindle and laser off. Zero Z with the pen tip touching the surface: the pen goes down to
- * Z-penDepth so it presses on the material, draws the bracket, and lifts to safe height. Null
- * when the sheet has nothing to cut.
+ * spindle and laser off. When the stock runs past what the GORDIX reaches, it draws instead every
+ * stretch of the stock's edges inside the reach (stockEdgeReach), so the machine never drives off
+ * its work area. Zero Z with the pen tip touching the surface: the pen goes down to Z-penDepth so
+ * it presses on the material, draws, and lifts to safe height between strokes. Null when the
+ * sheet has nothing to cut, or no edge is in reach.
  */
 export function writePenBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'index' | 'count'>): string | null {
   const { cfg } = ctx;
@@ -219,14 +265,19 @@ export function writePenBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'i
   const { at, turn, table } = machineFrame(cfg, ctx.sheetW, ctx.sheetH);
   const [ll, lr, , ul] = stockCorners(at, ctx.sheetW, ctx.sheetH);
   const tick = Math.min(PEN_TICK, lr.x - ll.x);
-  // Top edge in to the top-left corner, down the left edge, then out along the bottom edge.
-  const path = [{ x: ul.x + tick, y: ul.y }, ul, ll, { x: ll.x + tick, y: ll.y }];
+  const reach = stockEdgeReach(cfg, ctx.sheetW, ctx.sheetH);
+  // Top edge in to the top-left corner, down the left edge, then out along the bottom edge; or,
+  // past the reach, each edge stretch it can get to as its own stroke.
+  const strokes = reach ? reach.edges : [[{ x: ul.x + tick, y: ul.y }, ul, ll, { x: ll.x + tick, y: ll.y }]];
+  if (!strokes.length) return null;
   const z = Math.max(0.5, cfg.safeZ);
   const down = -Math.max(0, cfg.penDepth || 0);
   const rapidF = m.rapidF === null ? '' : ` F${n(m.rapidF)}`;
   const out = [
     `; PlyWooder: ${clean(ctx.title)}, pen-drawn stock edge`,
-    `; Draws the left edge of the ${n(ctx.sheetW)} x ${n(ctx.sheetH)} mm stock sheet, with the first ${n(tick)} mm of its top and bottom edges, so the stock can be placed against it.`,
+    reach
+      ? `; Draws the edges of the ${n(ctx.sheetW)} x ${n(ctx.sheetH)} mm stock sheet that the GORDIX reaches, stopping ${n(PEN_REACH_MARGIN)} mm inside its work area, so the stock can be placed against them.`
+      : `; Draws the left edge of the ${n(ctx.sheetW)} x ${n(ctx.sheetH)} mm stock sheet, with the first ${n(tick)} mm of its top and bottom edges, so the stock can be placed against it.`,
     '; Put a pen in the machine instead of the bit. Spindle and laser stay off.',
     '; Zero X and Y exactly as for the cutting files, and Z with the pen tip just touching the material.',
     `; The pen draws at Z${n(down)}, pressing ${n(-down)} mm into the surface: a spring-loaded holder gives it room.`,
@@ -238,10 +289,12 @@ export function writePenBoundsGcode(files: CamFile[], ctx: Omit<WriteContext, 'i
     'G90',
     `G0 X0 Y0${rapidF}`,
     `G0 Z${c(z)}`,
-    `G0 X${c(path[0].x)} Y${c(path[0].y)}${rapidF}`,
-    `G1 Z${c(down)} F${PEN_DOWN_FEED}`,
-    ...path.slice(1).map((p, k) => `G1 X${c(p.x)} Y${c(p.y)}${k === 0 ? ` F${PEN_FEED}` : ''}`),
-    `G0 Z${c(z)}`,
+    ...strokes.flatMap((path) => [
+      `G0 X${c(path[0].x)} Y${c(path[0].y)}${rapidF}`,
+      `G1 Z${c(down)} F${PEN_DOWN_FEED}`,
+      ...path.slice(1).map((p, k) => `G1 X${c(p.x)} Y${c(p.y)}${k === 0 ? ` F${PEN_FEED}` : ''}`),
+      `G0 Z${c(z)}`,
+    ]),
     `G0 X0 Y0${rapidF}`,
     ...m.end,
   ];
